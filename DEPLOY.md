@@ -54,6 +54,12 @@ git push -u origin main
 之后每次更新数据：
 
 ```bash
+sh tools/release.sh
+```
+
+该脚本串联：更新数据 → 核心自测 → 构建 dist → 提交 → 推送（无变化时自动跳过）。等价于手动执行：
+
+```bash
 node tools/update_ssq_data.mjs
 git add -A && git commit -m "data: 更新开奖数据" && git push
 ```
