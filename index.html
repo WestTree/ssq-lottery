@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>双色球号码生成器 · 机选摇号工具</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23e5484d'/%3E%3Ctext x='50' y='52' font-size='42' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='middle'%3E7%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --red:#e5484d; --red-deep:#a81f27;
+    --blue:#2f7fe0; --blue-deep:#14508f;
+    --bg:#f2f5f9; --card:#ffffff; --text:#1c2330; --muted:#68717f;
+    --border:#e6e9ef; --shadow:0 10px 30px rgba(28,45,80,.08);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",sans-serif;
+    background:
+      radial-gradient(1100px 480px at 85% -10%, rgba(229,72,77,.10), transparent 60%),
+      radial-gradient(900px 420px at -10% 8%, rgba(47,127,224,.10), transparent 60%),
+      var(--bg);
+    color:var(--text); min-height:100vh; padding:28px 16px 64px;
+    -webkit-text-size-adjust:100%;
+  }
+  .app{max-width:880px;margin:0 auto}
+
+  /* ===== 头部 ===== */
+  header{text-align:center;margin-bottom:22px}
+  .logo{display:flex;justify-content:center;gap:10px;margin-bottom:12px}
+  .logo-ball{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:18px;position:relative;
+    box-shadow:inset -3px -5px 9px rgba(0,0,0,.22),inset 3px 5px 9px rgba(255,255,255,.35),0 6px 14px rgba(20,40,80,.18)}
+  .logo-ball.red{background:radial-gradient(circle at 32% 28%,#ff8578,#e5484d 55%,#a81f27);transform:rotate(-8deg)}
+  .logo-ball.blue{background:radial-gradient(circle at 32% 28%,#7dbaff,#2f7fe0 55%,#14508f);transform:rotate(8deg)}
+  h1{font-size:26px;letter-spacing:1px}
+  .subtitle{margin-top:8px;color:var(--muted);font-size:13px}
+
+  /* ===== 卡片 ===== */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:18px;
+    box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
+
+  /* ===== 摇号舞台 ===== */
+  .status-line{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .status-line .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.15);flex:none}
+  .status-line.busy .dot{background:var(--red);box-shadow:0 0 0 4px rgba(229,72,77,.15);animation:pulse 1s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 7px rgba(229,72,77,.10)}}
+  .tickets{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin:18px 0 16px;min-height:120px}
+  .ticket{background:#f8fafc;border:1px solid var(--border);border-radius:16px;padding:14px 16px 16px}
+  .t-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .t-no{font-size:12px;color:var(--muted);font-weight:600}
+  .empty-ticket{grid-column:1/-1;border:2px dashed var(--border);border-radius:16px;
+    display:flex;align-items:center;justify-content:center;padding:42px 16px;color:var(--muted);font-size:14px}
+
+  /* ===== 号码球 ===== */
+  .balls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ball{width:clamp(40px,10.5vw,52px);height:clamp(40px,10.5vw,52px);border-radius:50%;
+    display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800;
+    font-size:clamp(15px,4.2vw,20px);font-variant-numeric:tabular-nums;position:relative;user-select:none;
+    box-shadow:inset -4px -7px 12px rgba(0,0,0,.22),inset 4px 6px 12px rgba(255,255,255,.35),0 8px 16px rgba(20,40,80,.18)}
+  .ball::after{content:"";position:absolute;top:6px;left:11px;width:16px;height:10px;border-radius:50%;
+    background:rgba(255,255,255,.5);filter:blur(2px);transform:rotate(-24deg)}
+  .ball.red{background:radial-gradient(circle at 32% 28%,#ff8578,#e5484d 52%,#9e1c24)}
+  .ball.blue{background:radial-gradient(circle at 32% 28%,#7dbaff,#2f7fe0 52%,#124a86)}
+  .ball.rolling{animation:shake .16s infinite linear}
+  .ball.pop{animation:pop .4s cubic-bezier(.2,1.6,.4,1)}
+  @keyframes shake{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+  @keyframes pop{0%{transform:scale(.55)}70%{transform:scale(1.18)}100%{transform:scale(1)}}
+  .plus{font-weight:800;color:var(--muted);margin:0 2px}
+
+  /* ===== 按钮 ===== */
+  .btn{border:1px solid var(--border);background:#fff;color:var(--text);padding:10px 18px;border-radius:12px;
+    font-size:15px;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;font-weight:600;font-family:inherit}
+  .btn:hover{border-color:#c9d2e0;transform:translateY(-1px)}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:linear-gradient(135deg,#ef5a5f,#d92d3a);color:#fff;border:none;
+    box-shadow:0 8px 20px rgba(217,45,58,.32);padding:12px 34px;font-size:16px}
+  .btn.sm{padding:7px 14px;font-size:13px;border-radius:10px}
+  .btn.sm.primary{padding:9px 18px}
+  .btn.danger{color:#c92a35}
+  .btn.danger:hover{border-color:#f0b6b9;background:#fff7f7}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .actions.left{justify-content:flex-start;margin-top:12px}
+  .link-btn{background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;padding:2px 6px;border-radius:6px;font-family:inherit}
+  .link-btn:hover{background:rgba(47,127,224,.08)}
+
+  /* ===== 控制区 ===== */
+  .ctrl-row{display:flex;align-items:center;gap:14px;padding:10px 0;flex-wrap:wrap}
+  .ctrl-label{width:64px;font-size:14px;color:var(--muted);font-weight:600;flex:none}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.8}
+  .seg{display:inline-flex;background:#eef1f6;border-radius:12px;padding:4px;gap:4px}
+  .seg button{border:none;background:transparent;padding:7px 16px;border-radius:9px;font-size:14px;
+    color:var(--muted);cursor:pointer;font-weight:600;font-family:inherit;transition:all .15s}
+  .seg button.active{background:#fff;color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  input[type=text]{border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px;
+    width:300px;max-width:100%;background:#fbfcfe;font-family:inherit;color:var(--text)}
+  input[type=text]:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(47,127,224,.15)}
+
+  /* ===== 自选号区 ===== */
+  .pick-info{font-size:12px;color:var(--muted);margin-top:4px}
+  .picker{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pick{width:34px;height:34px;border-radius:10px;border:1px solid var(--border);background:#fff;
+    font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .15s;
+    font-variant-numeric:tabular-nums;font-family:inherit}
+  .pick:hover{border-color:#c9d2e0}
+  .pick.on{background:linear-gradient(135deg,#ef5a5f,#c92a35);border-color:transparent;color:#fff}
+  .pick.blue.on{background:linear-gradient(135deg,#5aa2f0,#1c5fb0)}
+
+  /* ===== 历史记录 ===== */
+  .sec-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px}
+  .sec-head h2{font-size:16px}
+  .sec-head .count{color:var(--muted);font-size:12px;font-weight:400}
+  .sec-actions{display:flex;gap:8px}
+  .history{list-style:none;max-height:340px;overflow:auto}
+  .h-row{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px dashed var(--border);flex-wrap:wrap}
+  .h-row:last-child{border-bottom:none}
+  .h-time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;width:86px;flex:none}
+  .mini{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  .mini i{width:22px;height:22px;border-radius:50%;font-style:normal;font-size:11px;font-weight:700;
+    color:#fff;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+  .mini i.r{background:linear-gradient(135deg,#ef5a5f,#c92a35)}
+  .mini i.b{background:linear-gradient(135deg,#5aa2f0,#1c5fb0)}
+  .empty{font-size:13px;color:var(--muted);text-align:center;padding:18px 0}
+  .hot{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .hot-group{display:inline-flex;gap:5px}
+  .h-seed{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .ledger{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  .ledger b{color:var(--text);font-variant-numeric:tabular-nums}
+  .chip{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;
+    border-radius:999px;color:#fff;font-size:12px;font-weight:700;padding:0 6px;font-variant-numeric:tabular-nums}
+  .chip.r{background:linear-gradient(135deg,#ef5a5f,#c92a35)}
+  .chip.b{background:linear-gradient(135deg,#5aa2f0,#1c5fb0)}
+
+  /* ===== 中奖核对 ===== */
+  .issue-select{border:1px solid var(--border);border-radius:10px;padding:9px 12px;font-size:14px;
+    background:#fbfcfe;font-family:inherit;color:var(--text);max-width:100%}
+  .issue-select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(47,127,224,.15)}
+  .draw-date{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .draw-balls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+  .draw-balls .label{font-size:12px;color:var(--muted)}
+  .ball.ghost{background:#fff;color:var(--red);border:2px solid #f0b6b9;box-shadow:none}
+  .ball.ghost::after{display:none}
+  .ball.ghost.blue{color:var(--blue);border-color:#a9c8f0}
+  .chk-row{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px dashed var(--border);flex-wrap:wrap}
+  .chk-row:last-child{border-bottom:none}
+  .chk-tag{font-size:12px;color:var(--muted);font-weight:600;width:44px;flex:none}
+  .chk-level{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;flex:none}
+  .chk-level.win{background:linear-gradient(135deg,#ef5a5f,#c92a35);color:#fff}
+  .chk-level.none{background:#eef1f6;color:var(--muted)}
+  .chk-sum{font-size:13px;color:var(--muted);margin-top:10px}
+  .chk-empty{font-size:13px;color:var(--muted);padding:14px 0}
+
+  /* ===== 物理摇奖机 ===== */
+  .hidden{display:none !important}
+  .result-row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;min-height:42px}
+  .slot{width:40px;height:40px;border-radius:50%;border:2px dashed #cbd5e1;display:flex;align-items:center;justify-content:center;color:#b6c0cf;font-weight:700;font-size:15px;background:#f8fafc;flex:none}
+  .slot.blue{border-color:#a9c8f0}
+  .slot.filled{border-style:solid;border-color:transparent;background:transparent;animation:pop .4s cubic-bezier(.2,1.6,.4,1)}
+  .slot.active{border-color:var(--red);animation:slotPulse 1.2s infinite}
+  .slot.blue.active{border-color:var(--blue)}
+  @keyframes slotPulse{0%,100%{box-shadow:0 0 0 0 rgba(229,72,77,.25)}50%{box-shadow:0 0 0 6px rgba(229,72,77,0)}}
+  .ball.sm{width:34px;height:34px;font-size:15px;box-shadow:inset -3px -4px 8px rgba(0,0,0,.2),inset 3px 4px 8px rgba(255,255,255,.35),0 4px 10px rgba(20,40,80,.16)}
+  .canvas-wrap{background:linear-gradient(180deg,#fbfcfe,#f1f5f9);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+  #machineCanvas{display:block;width:100%;height:auto}
+  .machine-bar{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+  .machine-bar .phase{font-size:13px;color:var(--muted);min-width:160px}
+  .progress{flex:1;height:8px;background:#eef1f6;border-radius:999px;overflow:hidden;min-width:120px}
+  .progress-inner{height:100%;width:0;background:linear-gradient(90deg,#ef5a5f,#d92d3a);border-radius:999px;transition:width .3s}
+  .counter{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;flex:none}
+  .seg.sm button{padding:5px 10px;font-size:12px}
+  .lock-note{margin-top:6px}
+
+  footer{text-align:center;font-size:12px;color:var(--muted);line-height:1.9;margin-top:8px}
+
+  /* ===== Toast ===== */
+  .toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);
+    background:#1c2330;color:#fff;padding:10px 20px;border-radius:999px;font-size:14px;
+    opacity:0;pointer-events:none;transition:all .25s;z-index:99;max-width:86vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:560px){
+    body{padding:18px 10px 48px}
+    .card{padding:14px;border-radius:14px}
+    h1{font-size:22px}
+    .btn.primary{width:100%}
+    .actions{flex-direction:column}
+    .actions .btn{width:100%}
+    .ctrl-label{width:auto}
+    .h-time{width:auto}
+    .sec-actions{width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">
+      <span class="logo-ball red">6</span>
+      <span class="logo-ball blue">8</span>
+    </div>
+    <h1>双色球号码生成器</h1>
+    <p class="subtitle">6 颗红球（01-33，不重复）+ 1 颗蓝球（01-16）· 浏览器本地加密随机 · 仅供娱乐参考</p>
+  </header>
+
+  <section class="card stage">
+    <div class="seg" id="modeSeg" style="justify-content:center;margin-bottom:14px">
+      <button type="button" data-mode="physics" class="active">物理摇奖机</button>
+      <button type="button" data-mode="quick">极速机选</button>
+    </div>
+
+    <div id="physicsArea">
+      <div class="result-row" id="resultRow"></div>
+      <div class="canvas-wrap"><canvas id="machineCanvas" width="960" height="540"></canvas></div>
+      <div class="machine-bar">
+        <span class="phase" id="phaseText">待机中</span>
+        <div class="progress"><div class="progress-inner" id="progressBar"></div></div>
+        <span class="counter" id="ballCounter">0 / 7</span>
+        <span class="counter" id="seedText"></span>
+        <div class="seg sm" id="speedSeg">
+          <button type="button" data-s="1" class="active">1×</button>
+          <button type="button" data-s="2">2×</button>
+          <button type="button" data-s="4">4×</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-line hidden" id="quickStatus">
+      <span class="dot"></span>
+      <span id="statusText">极速机选：点击「开始摇号」立即生成</span>
+    </div>
+    <div class="tickets hidden" id="tickets"></div>
+
+    <div class="actions">
+      <button class="btn primary" id="genBtn" type="button">开始摇奖</button>
+      <button class="btn" id="copyAllBtn" type="button">复制本组号码</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="ctrl-row">
+      <span class="ctrl-label">生成注数</span>
+      <div class="seg" id="countSeg">
+        <button type="button" data-n="1" class="active">1 注</button>
+        <button type="button" data-n="3">3 注</button>
+        <button type="button" data-n="5">5 注</button>
+        <button type="button" data-n="10">10 注</button>
+      </div>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">幸运红球</span>
+      <input type="text" id="lockRed" placeholder="选填，如 7 18 26（1-33，最多 6 个）" autocomplete="off">
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">幸运蓝球</span>
+      <input type="text" id="lockBlue" placeholder="选填，如 8（1-16）" autocomplete="off">
+    </div>
+    <p class="hint">锁定的幸运号会出现在每一注中，剩余位置随机补全；随机数由浏览器加密级随机源（crypto.getRandomValues）生成，支持空格键快捷摇号。</p>
+    <p class="hint lock-note" id="lockNote" hidden>物理摇奖模式下，开奖结果由摇奖机内的混沌混合与碰撞决定，不支持幸运号锁定。</p>
+  </section>
+
+  <section class="card">
+    <div class="sec-head">
+      <h2>自选号码 <span class="count">（可选，手动点选一注）</span></h2>
+    </div>
+    <div class="pick-info" id="pickInfo">红球已选 0/6 · 蓝球已选 0/1</div>
+    <div class="picker" id="redPicker"></div>
+    <div class="picker" id="bluePicker"></div>
+    <div class="actions left">
+      <button class="btn sm primary" id="pickConfirmBtn" type="button" disabled>用这组自选号生成</button>
+      <button class="btn sm" id="pickClearBtn" type="button">清空自选</button>
+    </div>
+  </section>
+
+  <section class="card" id="checkCard">
+    <div class="sec-head">
+      <h2>中奖核对 <span class="count">（拿生成的号码对一期开奖算着玩）</span></h2>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-label">核对期号</span>
+      <select id="issueSelect" class="issue-select" aria-label="选择核对期号"></select>
+      <span class="draw-date" id="drawDate"></span>
+    </div>
+    <div class="draw-balls" id="drawBalls"></div>
+    <div id="checkResult"></div>
+    <p class="hint">开奖数据来源：500.com（datachart.500.com），本地共 <span id="drawCount">0</span> 期，最新更新至 <span id="drawUpdated">-</span>；由 tools/update_ssq_data.mjs 更新。号码由本地摇奖产生，与开奖机构无关，仅供娱乐。</p>
+  </section>
+
+  <section class="card">
+    <div class="sec-head">
+      <h2>历史记录 <span class="count" id="historyCount"></span></h2>
+      <div class="sec-actions">
+        <button class="btn sm" id="copyHistoryBtn" type="button">复制全部</button>
+        <button class="btn sm danger" id="clearHistoryBtn" type="button">清空</button>
+      </div>
+    </div>
+    <ul class="history" id="historyList"></ul>
+    <div class="empty" id="emptyTip">暂无记录，摇一注试试</div>
+    <div class="hot" id="hotBox" hidden>
+      <span>你的高频号</span>
+      <span class="hot-group" id="hotRed"></span>
+      <span class="hot-group" id="hotBlue"></span>
+    </div>
+    <div class="ledger" id="ledgerBox" hidden>
+      <span>开奖台账：物理开奖 <b id="ledgerTotal">0</b> 注 · 已复播校验 <b id="ledgerChecked">0</b> 注（一致 <b id="ledgerOk">0</b>）</span>
+      <button class="link-btn" id="exportLedgerBtn" type="button">导出台账 JSON</button>
+    </div>
+  </section>
+
+  <footer>
+    <p>本页面完全在本地浏览器中运行，不联网、不上传、不收集任何数据，记录仅保存于本机 localStorage；开奖历史数据来自 500.com，存放于本地 data/ssq.js。</p>
+    <p>双色球开奖为独立随机事件，任何号码的中奖概率相同；本工具仅供娱乐参考，请理性购彩，未成年人不得购买彩票。</p>
+  </footer>
+
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- 历史开奖数据（tools/update_ssq_data.mjs 生成；文件缺失时中奖核对自动禁用，不影响其他功能） -->
+<script src="data/ssq.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  /*__CORE_START__*/
+  // ===== 核心随机逻辑（纯函数，可被自动化测试提取） =====
+  function getCrypto() {
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') return crypto;
+    if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.getRandomValues === 'function') return globalThis.crypto;
+    return null;
+  }
+
+  // 生成 [0, max) 的均匀随机整数；拒绝采样消除取模偏差
+  function randomInt(max) {
+    if (typeof max !== 'number' || !isFinite(max) || max < 1 || Math.floor(max) !== max) {
+      throw new Error('randomInt: max 必须是正整数');
+    }
+    var c = getCrypto();
+    if (c) {
+      var buf = new Uint32Array(1);
+      var limit = Math.floor(4294967296 / max) * max;
+      var v = 0;
+      do { c.getRandomValues(buf); v = buf[0]; } while (v >= limit);
+      return v % max;
+    }
+    return Math.floor(Math.random() * max); // 极端降级：无加密随机源时
+  }
+
+  // 从 1..pool 中不重复抽取 n 个（排除 exclude），结果升序
+  function pickUnique(pool, n, exclude) {
+    if (n > pool) throw new Error('pickUnique: 取样数量超过池大小');
+    var used = {};
+    (exclude || []).forEach(function (x) { used[x] = true; });
+    var out = [];
+    var guard = 0;
+    while (out.length < n) {
+      if (++guard > 200000) throw new Error('pickUnique: 随机采样异常');
+      var cand = randomInt(pool) + 1;
+      if (!used[cand]) { used[cand] = true; out.push(cand); }
+    }
+    out.sort(function (a, b) { return a - b; });
+    return out;
+  }
+
+  // 生成一注：6 红（1-33 不重复，升序）+ 1 蓝（1-16）；支持幸运号锁定
+  function generateTicket(lockRed, lockBlue) {
+    var lock = lockRed || [];
+    var reds;
+    if (lock.length >= 6) {
+      if (lock.length > 6) throw new Error('锁定的红球不能超过 6 个');
+      reds = lock.slice().sort(function (a, b) { return a - b; });
+    } else {
+      // 锁定号必现：先随机补足差额（排除锁定号），再并入锁定号，最后统一升序
+      reds = pickUnique(33, 6 - lock.length, lock).concat(lock);
+      reds.sort(function (a, b) { return a - b; });
+    }
+    return { reds: reds, blue: lockBlue == null ? randomInt(16) + 1 : lockBlue };
+  }
+
+  // 解析用户输入的号码串，返回 { ok, nums, msg }
+  function parseNums(str, min, max, maxCount, name) {
+    var parts = String(str == null ? '' : str).split(/[,，、;；\s]+/).filter(Boolean);
+    var nums = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (!/^\d{1,2}$/.test(parts[i])) return { ok: false, msg: name + '只能输入数字' };
+      var v = Number(parts[i]);
+      if (v < min || v > max) return { ok: false, msg: name + '需在 ' + min + '-' + max + ' 之间' };
+      if (nums.indexOf(v) === -1) nums.push(v);
+      if (nums.length > maxCount) return { ok: false, msg: name + '最多 ' + maxCount + '个' };
+    }
+    return { ok: true, nums: nums };
+  }
+
+  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+  function formatTicket(t) {
+    return t.reds.map(pad2).join(' ') + ' + ' + pad2(t.blue);
+  }
+
+  // 判断两注是否完全一致（红球顺序无关；号码可为数字或字符串）
+  function sameTicket(a, b) {
+    if (!a || !b || a.blue == null || b.blue == null) return false;
+    if (Number(a.blue) !== Number(b.blue)) return false;
+    if (!Array.isArray(a.reds) || !Array.isArray(b.reds) || a.reds.length !== b.reds.length) return false;
+    var ra = a.reds.map(Number).sort(function (x, y) { return x - y; });
+    var rb = b.reds.map(Number).sort(function (x, y) { return x - y; });
+    for (var i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return false;
+    return true;
+  }
+
+  // ===== 算奖逻辑（单式奖级判定） =====
+  // 奖级判定算法移植自 xtwguw/Docker-ssq-dlt-cxc（MIT License），已与官方规则核对一致
+  var PRIZE_NAMES = ['', '一等奖', '二等奖', '三等奖', '四等奖', '五等奖', '六等奖'];
+
+  // 判定一注的中奖等级：返回 0（未中奖）~ 6（六等奖），1 为一等奖
+  // userRed/userBlue 为号码（数字或字符串均可，开奖数据为字符串如 '05'），内部统一转数字比对
+  function prizeLevel(userRed, userBlue, drawRed, drawBlue) {
+    if (!Array.isArray(userRed) || userRed.length !== 6) throw new Error('prizeLevel: 红球需为 6 个');
+    if (!Array.isArray(drawRed) || drawRed.length !== 6) throw new Error('prizeLevel: 开奖红球需为 6 个');
+    if (userBlue == null || drawBlue == null) throw new Error('prizeLevel: 蓝球不能为空');
+    var dr = {};
+    for (var i = 0; i < drawRed.length; i++) dr[Number(drawRed[i])] = true;
+    var seen = {}, hit = 0;
+    for (var j = 0; j < userRed.length; j++) {
+      var n = Number(userRed[j]);
+      if (!isFinite(n)) throw new Error('prizeLevel: 红球含非数字');
+      if (!seen[n]) { seen[n] = true; if (dr[n]) hit++; } // 防御性去重：重复号只计一次命中
+    }
+    var blueHit = Number(userBlue) === Number(drawBlue) ? 1 : 0;
+    if (hit === 6 && blueHit) return 1;                    // 6+1 一等奖
+    if (hit === 6) return 2;                               // 6+0 二等奖
+    if (hit === 5 && blueHit) return 3;                    // 5+1 三等奖
+    if (hit === 5 || (hit === 4 && blueHit)) return 4;     // 5+0 / 4+1 四等奖
+    if (hit === 4 || (hit === 3 && blueHit)) return 5;     // 4+0 / 3+1 五等奖
+    if (blueHit) return 6;                                 // 0+1 六等奖
+    return 0;
+  }
+
+  // 核对一注：返回 { level, name, hitRed:[命中的红球], hitBlue:bool }
+  function checkTicket(ticket, draw) {
+    if (!ticket || !Array.isArray(ticket.reds) || ticket.reds.length !== 6 || ticket.blue == null) {
+      throw new Error('checkTicket: 号码格式不合法');
+    }
+    if (!draw || !Array.isArray(draw.red) || draw.red.length !== 6 || draw.blue == null) {
+      throw new Error('checkTicket: 开奖数据格式不合法');
+    }
+    var level = prizeLevel(ticket.reds, ticket.blue, draw.red, draw.blue);
+    var dr = {}, hitRed = [];
+    for (var i = 0; i < draw.red.length; i++) dr[Number(draw.red[i])] = true;
+    for (var j = 0; j < ticket.reds.length; j++) {
+      var n = Number(ticket.reds[j]);
+      if (dr[n] && hitRed.indexOf(n) === -1) hitRed.push(n);
+    }
+    return {
+      level: level,
+      name: PRIZE_NAMES[level] || '',
+      hitRed: hitRed,
+      hitBlue: Number(ticket.blue) === Number(draw.blue)
+    };
+  }
+
+  // ===== 开奖历史数据规范化 =====
+  // 将数据文件中的记录转为 { issue, date, red:[数字升序], blue:数字 }；非法记录返回 null
+  function normalizeDraw(d) {
+    if (!d || typeof d !== 'object') return null;
+    var issue = String(d.issue == null ? '' : d.issue);
+    var date = String(d.date == null ? '' : d.date);
+    if (!/^\d{5}$/.test(issue)) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    var ym = date.split('-');
+    var dt = new Date(Number(ym[0]), Number(ym[1]) - 1, Number(ym[2]));
+    if (dt.getFullYear() !== Number(ym[0]) || dt.getMonth() !== Number(ym[1]) - 1 || dt.getDate() !== Number(ym[2])) return null;
+    if (!Array.isArray(d.red) || d.red.length !== 6) return null;
+    if (!Array.isArray(d.blue) || d.blue.length !== 1) return null;
+    var red = [], seen = {};
+    for (var i = 0; i < 6; i++) {
+      var n = Number(d.red[i]);
+      if (!isFinite(n) || n < 1 || n > 33 || seen[n]) return null;
+      seen[n] = true;
+      red.push(n);
+    }
+    var blue = Number(d.blue[0]);
+    if (!isFinite(blue) || blue < 1 || blue > 16) return null;
+    red.sort(function (a, b) { return a - b; });
+    return { issue: issue, date: date, red: red, blue: blue };
+  }
+
+  // 从历史数组（最新在前）取前 limit 期规范化数据，自动跳过坏记录
+  function loadDraws(history, limit) {
+    if (!Array.isArray(history)) return [];
+    var cap = (typeof limit === 'number' && limit > 0) ? limit : history.length;
+    var out = [];
+    for (var i = 0; i < history.length && out.length < cap; i++) {
+      var d = normalizeDraw(history[i]);
+      if (d) out.push(d);
+    }
+    return out;
+  }
+  /*__CORE_END__*/
+
+  // ===== 应用层 =====
+  var LS_HISTORY = 'ssq.history.v1';
+  var LS_SETTINGS = 'ssq.settings.v1';
+  var FUN_MSGS = ['加密随机源预热中…', '33 颗红球洗牌中…', '16 颗蓝球排队上场…', '运气天平校准中…', '好运正在酝酿…'];
+
+  function $(id) { return document.getElementById(id); }
+  var ticketsEl = $('tickets');
+  var statusLine = $('quickStatus');
+  var statusText = $('statusText');
+  var genBtn = $('genBtn');
+  var copyAllBtn = $('copyAllBtn');
+  var countSeg = $('countSeg');
+  var lockRedInput = $('lockRed');
+  var lockBlueInput = $('lockBlue');
+  var redPickerEl = $('redPicker');
+  var bluePickerEl = $('bluePicker');
+  var pickInfoEl = $('pickInfo');
+  var pickConfirmBtn = $('pickConfirmBtn');
+  var pickClearBtn = $('pickClearBtn');
+  var historyListEl = $('historyList');
+  var historyCount = $('historyCount');
+  var emptyTip = $('emptyTip');
+  var hotBox = $('hotBox');
+  var hotRedEl = $('hotRed');
+  var hotBlueEl = $('hotBlue');
+  var copyHistoryBtn = $('copyHistoryBtn');
+  var clearHistoryBtn = $('clearHistoryBtn');
+  var toastEl = $('toast');
+  var modeSegEl = $('modeSeg');
+  var physicsAreaEl = $('physicsArea');
+  var quickStatusEl = $('quickStatus');
+  var resultRowEl = $('resultRow');
+  var phaseTextEl = $('phaseText');
+  var progressBarEl = $('progressBar');
+  var ballCounterEl = $('ballCounter');
+  var speedSegEl = $('speedSeg');
+  var lockNoteEl = $('lockNote');
+  var checkCardEl = $('checkCard');
+  var issueSelectEl = $('issueSelect');
+  var drawDateEl = $('drawDate');
+  var drawBallsEl = $('drawBalls');
+  var checkResultEl = $('checkResult');
+  var drawCountEl = $('drawCount');
+  var drawUpdatedEl = $('drawUpdated');
+  var ledgerBoxEl = $('ledgerBox');
+  var ledgerTotalEl = $('ledgerTotal');
+  var ledgerCheckedEl = $('ledgerChecked');
+  var ledgerOkEl = $('ledgerOk');
+  var exportLedgerBtn = $('exportLedgerBtn');
+  var seedTextEl = $('seedText');
+
+  var state = { count: 1, lockRed: '', lockBlue: '', current: [] };
+  var picks = { red: [], blue: null };
+  var statusTimer = null;
+  var toastTimer = null;
+
+  // ===== Toast =====
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+
+  // ===== 复制（含降级方案） =====
+  function copyText(text, okMsg) {
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? (okMsg || '已复制') : '复制失败，请手动选择');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast(okMsg || '已复制'); }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  // ===== 本地存储 =====
+  function loadHistory() {
+    try {
+      var raw = localStorage.getItem(LS_HISTORY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function saveHistory(list) {
+    try { localStorage.setItem(LS_HISTORY, JSON.stringify(list.slice(0, 100))); } catch (e) { /* 忽略存储异常 */ }
+  }
+  function loadSettings() {
+    try {
+      var s = JSON.parse(localStorage.getItem(LS_SETTINGS) || '{}');
+      if ([1, 3, 5, 10].indexOf(s.count) > -1) state.count = s.count;
+      if (typeof s.lockRed === 'string') state.lockRed = s.lockRed;
+      if (typeof s.lockBlue === 'string') state.lockBlue = s.lockBlue;
+    } catch (e) { /* ignore */ }
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem(LS_SETTINGS, JSON.stringify({
+        count: state.count, lockRed: state.lockRed, lockBlue: state.lockBlue
+      }));
+    } catch (e) { /* ignore */ }
+  }
+
+  // ===== 渲染 =====
+  function makeBall(type) {
+    var b = document.createElement('span');
+    b.className = 'ball ' + type;
+    b.textContent = '?';
+    return b;
+  }
+
+  function renderTickets(list) {
+    ticketsEl.innerHTML = '';
+    list.forEach(function (t, i) {
+      var card = document.createElement('div');
+      card.className = 'ticket';
+
+      var head = document.createElement('div');
+      head.className = 't-head';
+      var no = document.createElement('span');
+      no.className = 't-no';
+      no.textContent = '第 ' + (i + 1) + ' 注 · 2 元';
+      head.appendChild(no);
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'link-btn';
+      copyBtn.textContent = '复制';
+      copyBtn.addEventListener('click', function () {
+        copyText(formatTicket(t), '已复制第 ' + (i + 1) + ' 注');
+      });
+      head.appendChild(copyBtn);
+      card.appendChild(head);
+
+      var balls = document.createElement('div');
+      balls.className = 'balls';
+      t.reds.forEach(function () { balls.appendChild(makeBall('red')); });
+      var plus = document.createElement('span');
+      plus.className = 'plus';
+      plus.textContent = '+';
+      balls.appendChild(plus);
+      balls.appendChild(makeBall('blue'));
+      card.appendChild(balls);
+
+      ticketsEl.appendChild(card);
+    });
+  }
+
+  function renderEmpty() {
+    ticketsEl.innerHTML = '';
+    var d = document.createElement('div');
+    d.className = 'empty-ticket';
+    d.textContent = '等待摇号 · 点击「开始摇号」或按空格键';
+    ticketsEl.appendChild(d);
+  }
+
+  // ===== 摇号动画 =====
+  function animateBall(el, finalVal, pool, delay) {
+    if (!el) return;
+    el.classList.add('rolling');
+    setTimeout(function () {
+      var t0 = performance.now();
+      var dur = 650 + Math.random() * 350;
+      function frame(now) {
+        var p = (now - t0) / dur;
+        if (p < 1) {
+          el.textContent = pad2(randomInt(pool) + 1);
+          requestAnimationFrame(frame);
+        } else {
+          el.classList.remove('rolling');
+          el.textContent = pad2(finalVal);
+          el.classList.remove('pop');
+          void el.offsetWidth; // 重启动画
+          el.classList.add('pop');
+        }
+      }
+      requestAnimationFrame(frame);
+    }, delay + Math.random() * 80);
+  }
+
+  function animateAll(list, doneMsg) {
+    var balls = ticketsEl.querySelectorAll('.ball');
+    var idx = 0;
+    list.forEach(function (t) {
+      t.reds.forEach(function (n, i) { animateBall(balls[idx++], n, 33, i * 110); });
+      animateBall(balls[idx++], t.blue, 16, 6 * 110);
+    });
+    statusLine.classList.add('busy');
+    statusText.textContent = FUN_MSGS[Math.floor(Math.random() * FUN_MSGS.length)];
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(function () {
+      statusLine.classList.remove('busy');
+      statusText.textContent = doneMsg;
+    }, 1700);
+  }
+
+  // ===== 生成 =====
+  // mode: 'quick'（极速机选）| 'pick'（自选号）| 'physics'（物理摇奖，带可复播种子）
+  function pushHistory(list, mode, seed) {
+    var h = loadHistory();
+    h.unshift({
+      t: Date.now(),
+      tickets: list,
+      mode: mode || 'quick',
+      seed: (mode === 'physics' && typeof seed === 'number') ? (seed >>> 0) : null
+    });
+    saveHistory(h);
+    renderHistory();
+  }
+
+  function generate() {
+    var lr = parseNums(lockRedInput.value, 1, 33, 6, '红球');
+    if (!lr.ok) { toast(lr.msg); lockRedInput.focus(); return; }
+    var lb = parseNums(lockBlueInput.value, 1, 16, 1, '蓝球');
+    if (!lb.ok) { toast(lb.msg); lockBlueInput.focus(); return; }
+    var lockBlue = lb.nums.length ? lb.nums[0] : null;
+
+    var list = [];
+    for (var i = 0; i < state.count; i++) list.push(generateTicket(lr.nums, lockBlue));
+
+    state.current = list;
+    renderTickets(list);
+    refreshCheck();
+    animateAll(list, '已生成 ' + list.length + ' 注，共 ' + (list.length * 2) + ' 元 · 点击每注右上角可单独复制');
+    pushHistory(list, 'quick');
+  }
+
+  // ===== 自选号码 =====
+  function makePick(n, type) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pick' + (type === 'blue' ? ' blue' : '');
+    btn.textContent = pad2(n);
+    btn.setAttribute('data-n', n);
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', function () { togglePick(type, n, btn); });
+    return btn;
+  }
+
+  function buildPickers() {
+    for (var n = 1; n <= 33; n++) redPickerEl.appendChild(makePick(n, 'red'));
+    for (var b = 1; b <= 16; b++) bluePickerEl.appendChild(makePick(b, 'blue'));
+  }
+
+  function togglePick(type, n, btn) {
+    if (type === 'red') {
+      var i = picks.red.indexOf(n);
+      if (i > -1) {
+        picks.red.splice(i, 1);
+        btn.classList.remove('on');
+        btn.setAttribute('aria-pressed', 'false');
+      } else {
+        if (picks.red.length >= 6) { toast('红球最多选择 6 个'); return; }
+        picks.red.push(n);
+        btn.classList.add('on');
+        btn.setAttribute('aria-pressed', 'true');
+      }
+    } else {
+      if (picks.blue === n) {
+        picks.blue = null;
+        btn.classList.remove('on');
+        btn.setAttribute('aria-pressed', 'false');
+      } else {
+        var prev = bluePickerEl.querySelector('.pick.on');
+        if (prev) { prev.classList.remove('on'); prev.setAttribute('aria-pressed', 'false'); }
+        picks.blue = n;
+        btn.classList.add('on');
+        btn.setAttribute('aria-pressed', 'true');
+      }
+    }
+    updatePickInfo();
+  }
+
+  function updatePickInfo() {
+    pickInfoEl.textContent = '红球已选 ' + picks.red.length + '/6 · 蓝球已选 ' + (picks.blue ? 1 : 0) + '/1';
+    pickConfirmBtn.disabled = !(picks.red.length === 6 && picks.blue);
+  }
+
+  function confirmPick() {
+    if (picks.red.length !== 6 || !picks.blue) { toast('需选 6 个红球和 1 个蓝球'); return; }
+    var t = generateTicket(picks.red.slice(), picks.blue);
+    state.current = [t];
+    renderTickets([t]);
+    refreshCheck();
+    animateAll([t], '已按自选号码生成 1 注');
+    pushHistory([t], 'pick');
+    clearPicks();
+  }
+
+  function clearPicks() {
+    picks.red = [];
+    picks.blue = null;
+    redPickerEl.querySelectorAll('.pick.on').forEach(function (b) {
+      b.classList.remove('on'); b.setAttribute('aria-pressed', 'false');
+    });
+    bluePickerEl.querySelectorAll('.pick.on').forEach(function (b) {
+      b.classList.remove('on'); b.setAttribute('aria-pressed', 'false');
+    });
+    updatePickInfo();
+  }
+
+  // ===== 历史记录 =====
+  function miniBall(cls, n) {
+    var i = document.createElement('i');
+    i.className = cls;
+    i.textContent = pad2(n);
+    return i;
+  }
+
+  function chip(n, cls) {
+    var s = document.createElement('span');
+    s.className = 'chip ' + cls;
+    s.textContent = pad2(n);
+    return s;
+  }
+
+  function renderHistory() {
+    var list = loadHistory();
+    historyCount.textContent = list.length ? '（' + list.length + ' 组）' : '';
+    emptyTip.style.display = list.length ? 'none' : '';
+    historyListEl.innerHTML = '';
+
+    list.forEach(function (entry) {
+      var li = document.createElement('li');
+      li.className = 'h-row';
+
+      var time = document.createElement('span');
+      time.className = 'h-time';
+      var d = new Date(entry.t);
+      time.textContent = pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' +
+        pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+      li.appendChild(time);
+
+      var mini = document.createElement('span');
+      mini.className = 'mini';
+      entry.tickets.forEach(function (t, ti) {
+        if (ti > 0) mini.appendChild(document.createTextNode(' / '));
+        t.reds.forEach(function (n) { mini.appendChild(miniBall('r', n)); });
+        mini.appendChild(document.createTextNode('+'));
+        mini.appendChild(miniBall('b', t.blue));
+      });
+      li.appendChild(mini);
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'link-btn';
+      btn.textContent = '复制';
+      btn.addEventListener('click', function () {
+        copyText(entry.tickets.map(formatTicket).join('\n'), '已复制该组');
+      });
+
+      // 物理开奖记录：展示种子并支持复播（旧记录无种子则跳过）
+      if (entry.mode === 'physics' && typeof entry.seed === 'number') {
+        var seedEl = document.createElement('span');
+        seedEl.className = 'h-seed';
+        seedEl.textContent = '种子 ' + entry.seed +
+          (entry.verified === true ? ' ✓' : entry.verified === false ? ' ✗' : '');
+        seedEl.title = entry.verified === true ? '复播校验：与原始结果一致'
+          : entry.verified === false ? '复播校验：与原始结果不一致' : '尚未复播校验';
+        li.appendChild(seedEl);
+
+        var replayBtn = document.createElement('button');
+        replayBtn.type = 'button';
+        replayBtn.className = 'link-btn';
+        replayBtn.textContent = '复播';
+        replayBtn.addEventListener('click', function () { replayStart(entry); });
+        li.appendChild(replayBtn);
+      }
+
+      li.appendChild(btn);
+
+      historyListEl.appendChild(li);
+    });
+
+    renderLedger(list);
+
+    if (list.length) {
+      var hot = computeHot(list);
+      hotBox.hidden = false;
+      hotRedEl.innerHTML = '';
+      hot.red.forEach(function (n) { hotRedEl.appendChild(chip(n, 'r')); });
+      hotBlueEl.innerHTML = '';
+      hot.blue.forEach(function (n) { hotBlueEl.appendChild(chip(n, 'b')); });
+    } else {
+      hotBox.hidden = true;
+    }
+  }
+
+  function computeHot(list) {
+    var rc = {}, bc = {};
+    list.forEach(function (e) {
+      (e.tickets || []).forEach(function (t) {
+        (t.reds || []).forEach(function (n) { rc[n] = (rc[n] || 0) + 1; });
+        if (t.blue != null) bc[t.blue] = (bc[t.blue] || 0) + 1;
+      });
+    });
+    function top(obj, k) {
+      return Object.keys(obj).map(Number).sort(function (a, b) {
+        return obj[b] - obj[a] || a - b;
+      }).slice(0, k);
+    }
+    return { red: top(rc, 3), blue: top(bc, 1) };
+  }
+
+  // ===== 开奖台账：复播与校验 =====
+  // 复播：用记录中的种子重跑物理过程，完成后与原始结果比对
+  function replayStart(entry) {
+    if (machineUI.busy) { toast('开奖进行中，请稍候'); return; }
+    if (!entry || typeof entry.seed !== 'number' || !entry.tickets || !entry.tickets[0]) {
+      toast('该记录没有种子，无法复播');
+      return;
+    }
+    if (machineUI.mode !== 'physics') setMode('physics');
+    machineUI.busy = true;
+    genBtn.disabled = true;
+    machineUI.remaining = 1;
+    machineUI.totalDraws = 1;
+    machineUI.drawSeq = 0;
+    machineUI.replay = { id: entry.t, expect: entry.tickets[0], seed: entry.seed };
+    toast('复播中…种子 ' + entry.seed);
+    startOneDraw(entry.seed);
+  }
+
+  // 记录复播校验结果（true 一致 / false 不一致）
+  function markVerified(entryT, ok) {
+    var h = loadHistory();
+    for (var i = 0; i < h.length; i++) {
+      if (h[i].t === entryT) { h[i].verified = !!ok; break; }
+    }
+    saveHistory(h);
+    renderHistory();
+  }
+
+  // 台账汇总展示
+  function renderLedger(list) {
+    var ph = list.filter(function (e) { return e.mode === 'physics' && typeof e.seed === 'number'; });
+    if (!ph.length) { ledgerBoxEl.hidden = true; return; }
+    var checked = ph.filter(function (e) { return e.verified === true || e.verified === false; }).length;
+    var ok = ph.filter(function (e) { return e.verified === true; }).length;
+    ledgerBoxEl.hidden = false;
+    ledgerTotalEl.textContent = String(ph.length);
+    ledgerCheckedEl.textContent = String(checked);
+    ledgerOkEl.textContent = String(ok);
+  }
+
+  // 导出台账 JSON（用于审计/归档）
+  function exportLedger() {
+    var list = loadHistory().filter(function (e) {
+      return e.mode === 'physics' && typeof e.seed === 'number' && e.tickets && e.tickets.length;
+    });
+    if (!list.length) { toast('暂无物理开奖记录'); return; }
+    var data = {
+      exportedAt: new Date().toISOString(),
+      source: '双色球物理摇奖机（ssq/index.html）',
+      engine: '固定步长 1/240s · LCG(1664525,1013904223) · 32 位种子',
+      entries: list.map(function (e) {
+        return {
+          time: new Date(e.t).toISOString(),
+          seed: e.seed,
+          result: e.tickets.map(formatTicket).join(' / '),
+          verified: e.verified === true ? true : (e.verified === false ? false : null)
+        };
+      })
+    };
+    var text = JSON.stringify(data, null, 2);
+    try {
+      var blob = new Blob([text], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'ssq-ledger-' + Date.now() + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1200);
+      toast('台账已导出（' + list.length + ' 条）');
+    } catch (e) {
+      copyText(text, '已复制台账 JSON（下载不可用）');
+    }
+  }
+
+  // ===== 中奖核对 =====
+  var checkDraws = [];   // 规范化开奖数据（最新在前，最多 60 期）
+  var checkIssue = null; // 当前核对期号
+
+  function initCheckPanel() {
+    var raw = null;
+    try { raw = window.SSQ_HISTORY; } catch (e) { raw = null; }
+    if (!Array.isArray(raw) || !raw.length) {
+      checkCardEl.style.display = 'none'; // 数据文件缺失：禁用核对功能，不影响其他模块
+      return;
+    }
+    checkDraws = loadDraws(raw, 60);
+    if (!checkDraws.length) { checkCardEl.style.display = 'none'; return; }
+    drawCountEl.textContent = String(raw.length);
+    drawUpdatedEl.textContent = checkDraws[0].date;
+    checkDraws.forEach(function (d) {
+      var opt = document.createElement('option');
+      opt.value = d.issue;
+      opt.textContent = '第 ' + d.issue + ' 期（' + d.date + '）';
+      issueSelectEl.appendChild(opt);
+    });
+    checkIssue = checkDraws[0].issue;
+    issueSelectEl.addEventListener('change', function () {
+      checkIssue = issueSelectEl.value;
+      renderCheck();
+    });
+    renderCheck();
+  }
+
+  function currentDraw() {
+    for (var i = 0; i < checkDraws.length; i++) {
+      if (checkDraws[i].issue === checkIssue) return checkDraws[i];
+    }
+    return checkDraws[0] || null;
+  }
+
+  function checkBall(type, text, hit) {
+    var b = document.createElement('span');
+    b.className = 'ball sm ' + type + (hit ? '' : ' ghost');
+    b.textContent = text;
+    return b;
+  }
+
+  function renderCheck() {
+    var draw = currentDraw();
+    if (!draw) return;
+    drawDateEl.textContent = draw.date + ' 开奖';
+
+    // 开奖号码（全部实心展示）
+    drawBallsEl.innerHTML = '';
+    var lab = document.createElement('span');
+    lab.className = 'label';
+    lab.textContent = '开奖号码';
+    drawBallsEl.appendChild(lab);
+    draw.red.forEach(function (n) { drawBallsEl.appendChild(checkBall('red', pad2(n), true)); });
+    var plus = document.createElement('span');
+    plus.className = 'plus';
+    plus.textContent = '+';
+    drawBallsEl.appendChild(plus);
+    drawBallsEl.appendChild(checkBall('blue', pad2(draw.blue), true));
+
+    // 对当前号码组逐注算奖
+    checkResultEl.innerHTML = '';
+    var list = state.current || [];
+    if (!list.length) {
+      var empty = document.createElement('div');
+      empty.className = 'chk-empty';
+      empty.textContent = '请先摇号生成号码，这里会自动对所选期号算奖';
+      checkResultEl.appendChild(empty);
+      return;
+    }
+    var winCount = 0, best = 0;
+    list.forEach(function (t, i) {
+      var r;
+      try {
+        r = checkTicket(t, draw);
+      } catch (e) {
+        return; // 跳过格式异常的历史数据（理论上不会发生）
+      }
+      if (r.level > 0) { winCount++; if (best === 0 || r.level < best) best = r.level; }
+
+      var row = document.createElement('div');
+      row.className = 'chk-row';
+      var tag = document.createElement('span');
+      tag.className = 'chk-tag';
+      tag.textContent = '第 ' + (i + 1) + ' 注';
+      row.appendChild(tag);
+
+      var balls = document.createElement('div');
+      balls.className = 'balls';
+      t.reds.forEach(function (n) { balls.appendChild(checkBall('red', pad2(n), r.hitRed.indexOf(n) > -1)); });
+      var p = document.createElement('span');
+      p.className = 'plus';
+      p.textContent = '+';
+      balls.appendChild(p);
+      balls.appendChild(checkBall('blue', pad2(t.blue), r.hitBlue));
+      row.appendChild(balls);
+
+      var lv = document.createElement('span');
+      lv.className = 'chk-level ' + (r.level > 0 ? 'win' : 'none');
+      lv.textContent = r.level > 0 ? r.name : '未中奖';
+      row.appendChild(lv);
+      checkResultEl.appendChild(row);
+    });
+
+    var sum = document.createElement('div');
+    sum.className = 'chk-sum';
+    sum.textContent = '本组 ' + list.length + ' 注 · 中奖 ' + winCount + ' 注' +
+      (best > 0 ? ' · 最高 ' + PRIZE_NAMES[best] : '') + ' · 核对第 ' + draw.issue + ' 期';
+    checkResultEl.appendChild(sum);
+  }
+
+  // 新号码生成后刷新核对面板（无数据时为 no-op）
+  function refreshCheck() {
+    if (checkDraws.length) renderCheck();
+  }
+
+  /*__PHYS_START__*/
+  // ===== 物理摇奖机模拟核心（不依赖 DOM，可被 Node 提取做无头测试） =====
+  // 双机台结构：左侧红球机（33 颗 01-33），右侧蓝球机（16 颗 01-16）
+  // 各自独立鼓腔 / 旋转鼓壁 / 鼓风机 / 出球口 / 管道 / 托盘
+  // 开奖顺序：双机混合 → 红球机连续出 6 球 → 切换蓝球机出 1 球
+  var PHYS = {
+    g: 1500,                 // 重力加速度 px/s^2
+    ballR: 13,
+    redDrum: { cx: 245, cy: 195, R: 125 },  // 红球机（左）
+    blueDrum: { cx: 715, cy: 195, R: 125 }, // 蓝球机（右）
+    omegaIdle: 1.0,          // 鼓壁角速度 rad/s
+    omegaMix: 3.6,
+    blowerIdle: 0.4,         // 鼓风机强度系数
+    blowerMix: 1.0,
+    blowerEject: 0.45,       // 出球阶段减弱，便于抽吸取球
+    restBall: 0.9,           // 球-球恢复系数
+    restWall: 0.8,           // 球-壁恢复系数
+    wallFriction: 0.14,      // 鼓壁切向摩擦
+    airDrag: 0.16,
+    outletGap: 0.22,         // 出球口缺口半宽（弧度，位于鼓腔最低点）
+    suction: 8000,           // 抽吸力
+    suctionRange: 135,
+    exitBoost: 200,          // 出球时沿管道轴向的初速
+    mixDuration: 1.0,        // 混合时长（秒）
+    switchDuration: 0.9,     // 红球开完后切换蓝球机的展示时长（秒）
+    gapDuration: 0.3,        // 两球间隔（秒）
+    tubeHW: 19,              // 管道半宽
+    tubeFlow: 170,           // 沿管气流
+    tubeDrag: 0.5,           // 管内空气阻力
+    maxBallSpeed: 1600,
+    travelTimeout: 10,       // 出球后在途超时兜底（秒）
+  };
+  var RED_OUT = { x: PHYS.redDrum.cx, y: PHYS.redDrum.cy + PHYS.redDrum.R };
+  var BLUE_OUT = { x: PHYS.blueDrum.cx, y: PHYS.blueDrum.cy + PHYS.blueDrum.R };
+
+  // 管道：出球口 → 托盘（单段直下斜坡，无拐角）
+  function makeTube(x1, y1, x2, y2) {
+    var dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+    return { segs: [{ x1: x1, y1: y1, x2: x2, y2: y2 }], dir: { x: dx / L, y: dy / L }, len: L };
+  }
+  var RED_TUBE = makeTube(RED_OUT.x, RED_OUT.y + 5, 430, 445);
+  var BLUE_TUBE = makeTube(BLUE_OUT.x, BLUE_OUT.y + 5, 570, 445);
+  var RED_TRAY = { left: 385, right: 530, floor: 470 };
+  var BLUE_TRAY = { left: 555, right: 700, floor: 470 };
+
+  function drumOf(b) { return b.drum === 'red' ? PHYS.redDrum : PHYS.blueDrum; }
+  function outOf(b) { return b.drum === 'red' ? RED_OUT : BLUE_OUT; }
+  function tubeOf(b) { return b.drum === 'red' ? RED_TUBE : BLUE_TUBE; }
+  function trayOf(b) { return b.drum === 'red' ? RED_TRAY : BLUE_TRAY; }
+
+  // 可复现随机源：32 位 LCG（数值种子 -> [0,1) 序列），同种子必定同序列
+  function lcgFromSeed(seed) {
+    var s = (seed >>> 0) || 1;
+    return function () {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  // 新种子：优先加密随机源，缺失时降级 Math.random
+  function newSeed() {
+    try {
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        var b = new Uint32Array(1);
+        crypto.getRandomValues(b);
+        return b[0] >>> 0;
+      }
+    } catch (e) { /* 降级 */ }
+    return (Math.random() * 4294967296) >>> 0;
+  }
+
+  // seedOrRng: 数值种子（可复现/可复播）| 随机函数（测试注入）| 空（自动生成种子）
+  function simCreate(seedOrRng, hooks) {
+    var seed = null, rng;
+    if (typeof seedOrRng === 'function') {
+      rng = seedOrRng;
+    } else if (typeof seedOrRng === 'number' && isFinite(seedOrRng)) {
+      seed = seedOrRng >>> 0;
+      rng = lcgFromSeed(seed);
+    } else {
+      seed = newSeed();
+      rng = lcgFromSeed(seed);
+    }
+    return {
+      seed: seed,
+      rng: rng,
+      hooks: hooks || {},
+      balls: [], phase: 'idle', phaseT: 0, time: 0, simTime: 0,
+      outletOpen: false, activeDrum: 'red',
+      omegaRed: PHYS.omegaIdle, omegaBlue: PHYS.omegaIdle,
+      drawCount: 0, captured: [], needBlue: false, ejectedTotal: 0,
+    };
+  }
+
+  function simBall(n, color, drum) {
+    return { n: n, color: color, drum: drum, x: 0, y: 0, vx: 0, vy: 0, state: 'drum', settleT: 0, trayT: 0, angle: 0, omega: 0 };
+  }
+
+  function simReset(sim) {
+    sim.balls = [];
+    var i, n;
+    for (n = 1; n <= 33; n++) sim.balls.push(simBall(n, 'red', 'red'));
+    for (n = 1; n <= 16; n++) sim.balls.push(simBall(n, 'blue', 'blue'));
+    for (i = 0; i < sim.balls.length; i++) {
+      var b = sim.balls[i];
+      var D = drumOf(b);
+      var ang = sim.rng() * Math.PI * 2;
+      var rad = Math.sqrt(sim.rng()) * (D.R - PHYS.ballR - 8);
+      b.x = D.cx + Math.cos(ang) * rad;
+      b.y = D.cy + Math.sin(ang) * rad;
+      b.vx = (sim.rng() - 0.5) * 160;
+      b.vy = (sim.rng() - 0.5) * 160;
+      b.state = 'drum';
+      b.angle = 0; b.omega = 0; b.settleT = 0; b.trayT = 0;
+    }
+    for (i = 0; i < 90; i++) separateBalls(sim); // 初始化去重叠
+    sim.phase = 'idle'; sim.phaseT = 0; sim.time = 0; sim.simTime = 0;
+    sim.drawCount = 0; sim.captured = []; sim.needBlue = false;
+    sim.outletOpen = false; sim.ejectedTotal = 0;
+    sim.activeDrum = 'red';
+    sim.omegaRed = PHYS.omegaIdle; sim.omegaBlue = PHYS.omegaIdle;
+  }
+
+  function simStart(sim) { sim.phase = 'mixing'; sim.phaseT = 0; }
+
+  function angDiff(a, b) {
+    var d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  function closestOnSeg(x1, y1, x2, y2, px, py) {
+    var dx = x2 - x1, dy = y2 - y1;
+    var L2 = dx * dx + dy * dy || 1;
+    var t = ((px - x1) * dx + (py - y1) * dy) / L2;
+    t = Math.max(0, Math.min(1, t));
+    return { x: x1 + t * dx, y: y1 + t * dy };
+  }
+
+  // 整条折线的最近点（必须先算全局最近点再投影，逐段投影会在拐角处互相拉扯）
+  function closestOnPolyline(segs, px, py) {
+    var best = null, bestD = Infinity;
+    for (var i = 0; i < segs.length; i++) {
+      var cp = closestOnSeg(segs[i].x1, segs[i].y1, segs[i].x2, segs[i].y2, px, py);
+      var d = (cp.x - px) * (cp.x - px) + (cp.y - py) * (cp.y - py);
+      if (d < bestD) { bestD = d; best = cp; }
+    }
+    return best;
+  }
+
+  // 仅位置分离（初始化用）；两台机器的球互不碰撞
+  function separateBalls(sim) {
+    var balls = sim.balls, n = balls.length, r2 = PHYS.ballR * 2;
+    for (var i = 0; i < n; i++) {
+      for (var j = i + 1; j < n; j++) {
+        var a = balls[i], b = balls[j];
+        if (a.drum !== b.drum) continue;
+        var dx = b.x - a.x, dy = b.y - a.y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 >= r2 * r2 || d2 === 0) continue;
+        var d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+        var overlap = (r2 - d) / 2 + 0.1;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+      }
+    }
+    balls.forEach(function (b) {
+      var D = drumOf(b);
+      var dx = b.x - D.cx, dy = b.y - D.cy;
+      var d = Math.hypot(dx, dy) || 1;
+      var maxD = D.R - PHYS.ballR;
+      if (d > maxD) { b.x = D.cx + dx / d * maxD; b.y = D.cy + dy / d * maxD; }
+    });
+  }
+
+  // 球-球碰撞：等质量弹性碰撞 + 位置修正 + 弱切向摩擦（仅同机台内）
+  function collideBalls(sim) {
+    var balls = sim.balls, n = balls.length, r2 = PHYS.ballR * 2;
+    for (var i = 0; i < n; i++) {
+      var a = balls[i];
+      if (a.state !== 'drum') continue;
+      for (var j = i + 1; j < n; j++) {
+        var b = balls[j];
+        if (b.state !== 'drum' || b.drum !== a.drum) continue;
+        var dx = b.x - a.x, dy = b.y - a.y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 >= r2 * r2 || d2 === 0) continue;
+        var d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+        var overlap = (r2 - d) / 2;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+        var rvn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+        if (rvn < 0) {
+          var imp = -(1 + PHYS.restBall) * rvn / 2;
+          a.vx -= imp * nx; a.vy -= imp * ny;
+          b.vx += imp * nx; b.vy += imp * ny;
+          var tx = -ny, ty = nx;
+          var vt = (b.vx - a.vx) * tx + (b.vy - a.vy) * ty;
+          var ft = vt * 0.06;
+          a.vx += ft * tx; a.vy += ft * ty;
+          b.vx -= ft * tx; b.vy -= ft * ty;
+        }
+      }
+    }
+  }
+
+  // 球-鼓壁碰撞：含壁面线速度（旋转）与切向摩擦；仅工作中的机台且口门开启时允许出球
+  function wallCollisions(sim) {
+    for (var i = 0; i < sim.balls.length; i++) {
+      var b = sim.balls[i];
+      if (b.state !== 'drum') continue;
+      var D = drumOf(b), O = outOf(b), T = tubeOf(b);
+      var R = D.R, r = PHYS.ballR;
+      var dx = b.x - D.cx, dy = b.y - D.cy;
+      var d = Math.hypot(dx, dy) || 1;
+      var maxD = R - r;
+      if (d <= maxD) continue;
+      var ang = Math.atan2(dy, dx);
+      var inGap = sim.outletOpen && sim.activeDrum === b.drum &&
+        Math.abs(angDiff(ang, Math.PI / 2)) < PHYS.outletGap;
+      if (inGap) {
+        // 出球：转入管道飞行状态，沿本机管道轴向注入
+        b.state = 'tube';
+        b.x = O.x;
+        b.y = O.y + 6;
+        b.vx = T.dir.x * PHYS.exitBoost + b.vx * 0.2;
+        b.vy = T.dir.y * PHYS.exitBoost + b.vy * 0.2;
+        sim.outletOpen = false; // 一次只出一球
+        sim.phase = 'travel';
+        sim.phaseT = 0;
+        sim.ejectedTotal++;
+        if (sim.hooks.onEject) sim.hooks.onEject(b);
+      } else {
+        // 贴壁：法向恢复 + 旋转切向摩擦
+        var nx = dx / d, ny = dy / d;
+        b.x = D.cx + nx * maxD;
+        b.y = D.cy + ny * maxD;
+        var tx = -ny, ty = nx;
+        var omega = b.drum === 'red' ? sim.omegaRed : sim.omegaBlue;
+        var wvx = tx * omega * R, wvy = ty * omega * R;
+        var rvx = b.vx - wvx, rvy = b.vy - wvy;
+        var vn = rvx * nx + rvy * ny;
+        if (vn > 0) {
+          var nvn = -vn * PHYS.restWall;
+          rvx += (nvn - vn) * nx; rvy += (nvn - vn) * ny;
+          var vt = rvx * tx + rvy * ty;
+          var nvt = vt * (1 - PHYS.wallFriction);
+          rvx += (nvt - vt) * tx; rvy += (nvt - vt) * ty;
+          b.vx = rvx + wvx; b.vy = rvy + wvy;
+        }
+        // 与旋转鼓壁纯滚动（相对壁面切向速度决定自旋）
+        var wvt = (b.vx - wvx) * tx + (b.vy - wvy) * ty;
+        b.omega = Math.max(-60, Math.min(60, -wvt / PHYS.ballR));
+      }
+    }
+  }
+
+  // 管道内飞行：重力 + 沿管气流 + 管壁约束
+  // 接触模型：法向恢复系数反弹；切向仅在明显冲击时损能，持续接触时仅加微小滚动阻力
+  // （若持续接触也按比例损能，球会以极低终端速度"贴地爬行"）
+  function tubeStep(sim, b, dt) {
+    var T = tubeOf(b);
+    b.vy += PHYS.g * dt;
+    b.vx += T.dir.x * PHYS.tubeFlow * dt;
+    b.vy += T.dir.y * PHYS.tubeFlow * dt;
+    var drag = 1 - PHYS.tubeDrag * dt;
+    b.vx *= drag; b.vy *= drag;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    // 管壁约束：以整条折线的最近点投影，避免拐角处分段约束互相拉扯
+    var cp = closestOnPolyline(T.segs, b.x, b.y);
+    var dx = b.x - cp.x, dy = b.y - cp.y;
+    var d = Math.hypot(dx, dy) || 1;
+    var maxD = PHYS.tubeHW - PHYS.ballR;
+    if (d > maxD) {
+      var nx = dx / d, ny = dy / d;
+      b.x = cp.x + nx * maxD; b.y = cp.y + ny * maxD;
+      var vn = b.vx * nx + b.vy * ny;
+      if (vn > 0) {
+        var nvn = -vn * 0.45;
+        b.vx += (nvn - vn) * nx; b.vy += (nvn - vn) * ny;
+        var tx = -ny, ty = nx;
+        var vt = b.vx * tx + b.vy * ty;
+        if (vn > 30) {
+          // 明显冲击：切向损失 2%
+          var f = vt * 0.02;
+          b.vx -= f * tx; b.vy -= f * ty;
+        } else {
+          // 持续接触：仅恒定滚动阻力 30px/s^2
+          var rr = 30 * dt;
+          if (vt > rr) { b.vx -= tx * rr; b.vy -= ty * rr; }
+          else if (vt < -rr) { b.vx += tx * rr; b.vy += ty * rr; }
+          else { b.vx -= tx * vt; b.vy -= ty * vt; }
+        }
+        // 纯滚动：角速度与接触切向速度匹配（球滚而下，而非滑行）
+        var vt2 = b.vx * tx + b.vy * ty;
+        b.omega = Math.max(-60, Math.min(60, -vt2 / PHYS.ballR));
+      }
+    }
+    // 越过管口（沿管轴投影）→ 落入本机托盘
+    var s = (b.x - T.segs[0].x1) * T.dir.x + (b.y - T.segs[0].y1) * T.dir.y;
+    if (s >= T.len - PHYS.ballR * 0.3) {
+      b.state = 'tray'; b.trayT = 0; b.settleT = 0;
+      if (sim.hooks.onTray) sim.hooks.onTray(b);
+    }
+  }
+
+  // 托盘内弹跳沉降：速度低于阈值持续 0.3s 即视为落定
+  function trayStep(sim, b, dt) {
+    var T = trayOf(b);
+    b.vy += PHYS.g * dt;
+    b.vx *= (1 - 1.2 * dt);
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.y > T.floor - PHYS.ballR) {
+      b.y = T.floor - PHYS.ballR;
+      if (b.vy > 0) {
+        if (b.vy > 60) b.vy = -b.vy * 0.35; else b.vy = 0;
+      }
+      b.vx *= (1 - 2.5 * dt); // 地面持续阻尼：滚着减速停下
+      // 地板纯滚动：角速度随线速度衰减，停止时自旋归零
+      b.omega = Math.max(-60, Math.min(60, -b.vx / PHYS.ballR));
+    }
+    if (b.x < T.left + PHYS.ballR) { b.x = T.left + PHYS.ballR; b.vx = Math.abs(b.vx) * 0.5; }
+    if (b.x > T.right - PHYS.ballR) { b.x = T.right - PHYS.ballR; b.vx = -Math.abs(b.vx) * 0.5; }
+    b.trayT += dt;
+    if (Math.hypot(b.vx, b.vy) < 45) b.settleT += dt; else b.settleT = 0;
+    if (b.settleT > 0.3 || b.trayT > 8) captureBall(sim, b);
+  }
+
+  function captureBall(sim, b) {
+    b.state = 'dead';
+    sim.captured.push({ n: b.n, color: b.color });
+    sim.drawCount++;
+    sim.needBlue = sim.drawCount >= 6; // 前 6 球红球机，第 7 球蓝球机
+    sim.phaseT = 0;
+    if (sim.drawCount >= 7) {
+      sim.phase = 'done';
+      if (sim.hooks.onDrawDone) sim.hooks.onDrawDone(sim.captured.slice());
+    } else if (sim.drawCount >= 6) {
+      sim.phase = 'switch'; // 红球机 6 球完成，切换蓝球机
+    } else {
+      sim.phase = 'gap';
+    }
+    if (sim.hooks.onCapture) sim.hooks.onCapture(b.n, b.color, sim.drawCount, b);
+  }
+
+  // 单步物理推进 + 相位机
+  function simStep(sim, dt) {
+    sim.time += dt; sim.phaseT += dt; sim.simTime += dt;
+    if (sim.phase === 'mixing' && sim.phaseT >= PHYS.mixDuration) {
+      sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
+      sim.activeDrum = sim.needBlue ? 'blue' : 'red';
+      if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
+    } else if (sim.phase === 'gap' && sim.phaseT >= PHYS.gapDuration) {
+      sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
+      sim.activeDrum = sim.needBlue ? 'blue' : 'red';
+      if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
+    } else if (sim.phase === 'switch' && sim.phaseT >= PHYS.switchDuration) {
+      sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
+      sim.activeDrum = 'blue';
+      if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
+    } else if (sim.phase === 'travel' && sim.phaseT > PHYS.travelTimeout) {
+      // 兜底：在途超时，管道中的球直接送到管口，托盘中的球直接捕获
+      for (var i = 0; i < sim.balls.length; i++) {
+        var sb = sim.balls[i];
+        var T = tubeOf(sb);
+        if (sb.state === 'tube') {
+          sb.x = T.segs[T.segs.length - 1].x2;
+          sb.y = T.segs[T.segs.length - 1].y2;
+          sb.vx = 0; sb.vy = 0;
+          sb.state = 'tray'; sb.trayT = 0; sb.settleT = 0;
+        } else if (sb.state === 'tray') {
+          captureBall(sim, sb);
+        }
+      }
+    }
+    stepPhysics(sim, dt);
+    if (sim.balls.some(function (b) { return b.state === 'dead'; })) {
+      sim.balls = sim.balls.filter(function (b) { return b.state !== 'dead'; });
+    }
+  }
+
+  function stepPhysics(sim, dt) {
+    var i, b;
+    // 机台工况：初始混合仅红球机工作；红球阶段红机出球、蓝机完全静止（不摇动）；
+    // 红球 6 球出完后进入 switch，蓝球机才启动混合，随后出球
+    var working = sim.phase !== 'idle' && sim.phase !== 'done';
+    var mixingPhase = sim.phase === 'mixing';
+    var redWorking = working && !sim.needBlue;
+    var blueWorking = working && sim.needBlue;
+    var redBlower = mixingPhase ? PHYS.blowerMix
+      : (redWorking ? PHYS.blowerEject : PHYS.blowerIdle);
+    var blueBlower = blueWorking
+      ? (sim.phase === 'eject' ? PHYS.blowerEject : PHYS.blowerMix * 0.85)
+      : 0; // 蓝球机未启动：鼓风机关闭，球静置鼓底
+    sim.omegaRed = mixingPhase ? PHYS.omegaMix
+      : (redWorking && sim.phase === 'eject' ? PHYS.omegaMix * 0.55 : PHYS.omegaIdle);
+    sim.omegaBlue = blueWorking
+      ? (sim.phase === 'eject' ? PHYS.omegaMix * 0.55 : PHYS.omegaMix)
+      : 0; // 蓝球机未启动：鼓壁不转
+
+    for (i = 0; i < sim.balls.length; i++) {
+      b = sim.balls[i];
+      b.angle += b.omega * dt; // 旋转积分：接触时同步为纯滚动，空中保持自旋
+      if (b.state === 'drum') {
+        var D = drumOf(b), O = outOf(b);
+        var blower = b.drum === 'red' ? redBlower : blueBlower;
+        var omega = b.drum === 'red' ? sim.omegaRed : sim.omegaBlue;
+        b.vy += PHYS.g * dt;
+        // 鼓风机：底部区域上升气流 + 湍流 + 旋转旋流
+        var zoneY = D.cy + D.R * 0.15;
+        var zone = (b.y - zoneY) / (D.R * 0.85);
+        if (zone > 0) {
+          var s = Math.min(zone, 1) * blower * 5600;
+          b.vy -= s * dt;
+          var t = sim.time;
+          b.vx += Math.sin(t * 6.3 + b.x * 0.07 + b.n * 1.7) * 300 * blower * dt;
+          b.vy += Math.cos(t * 5.1 + b.y * 0.07 + b.n * 2.3) * 190 * blower * dt;
+          var dx = b.x - D.cx, dy = b.y - D.cy;
+          var d = Math.hypot(dx, dy) || 1;
+          b.vx += (-dy / d) * omega * 300 * blower * dt;
+          b.vy += (dx / d) * omega * 300 * blower * dt;
+        }
+        // 出球口抽吸：仅工作中的机台且口门开启
+        if (sim.outletOpen && sim.activeDrum === b.drum) {
+          var ox = O.x - b.x, oy = O.y - b.y;
+          var od = Math.hypot(ox, oy) || 1;
+          if (od < PHYS.suctionRange) {
+            var falloff = 1 - od / PHYS.suctionRange;
+            var boost = sim.phase === 'eject' && sim.phaseT > 3 ? 1.8 : 1; // 超时兜底增压
+            var f = (PHYS.suction * falloff + 500) * boost;
+            b.vx += (ox / od) * f * dt;
+            b.vy += (oy / od) * f * dt;
+          }
+        }
+        // 空气阻力 + 限速
+        var drag = 1 - PHYS.airDrag * dt;
+        b.vx *= drag; b.vy *= drag;
+        var sp = Math.hypot(b.vx, b.vy);
+        if (sp > PHYS.maxBallSpeed) { b.vx *= PHYS.maxBallSpeed / sp; b.vy *= PHYS.maxBallSpeed / sp; }
+        b.x += b.vx * dt; b.y += b.vy * dt;
+      } else if (b.state === 'tube') {
+        tubeStep(sim, b, dt);
+      } else if (b.state === 'tray') {
+        trayStep(sim, b, dt);
+      }
+    }
+    collideBalls(sim);
+    wallCollisions(sim);
+  }
+  /*__PHYS_END__*/
+
+  // ===== 渲染层（依赖 DOM） =====
+  var machineUI = {
+    canvas: null, ctx: null,
+    sim: null, rafId: 0, lastT: 0, acc: 0,
+    speed: 1, busy: false, remaining: 0, totalDraws: 1, drawSeq: 0,
+    particles: [], spheres: null, numbers: {}, mode: 'physics', lastPhaseText: '',
+    currentSeed: null, replay: null,
+  };
+
+  // 球体精灵：渐变球面 + 固定光源高光（不随滚动旋转）
+  function makeSphereSprite(color) {
+    var r = PHYS.ballR, pad = 4, size = (r + pad) * 2;
+    var c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    var g = c.getContext('2d');
+    var cx = size / 2, cy = size / 2;
+    var grad = g.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.12, cx, cy, r);
+    if (color === 'red') {
+      grad.addColorStop(0, '#ffa39c'); grad.addColorStop(0.45, '#ef5a5f'); grad.addColorStop(1, '#9e1c24');
+    } else {
+      grad.addColorStop(0, '#a8ccff'); grad.addColorStop(0.45, '#4f95e8'); grad.addColorStop(1, '#14508f');
+    }
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.fillStyle = grad; g.fill();
+    g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,.12)'; g.stroke();
+    // 底部接触阴影（增强立体感）
+    g.beginPath(); g.arc(cx, cy, r - 1.5, Math.PI * 0.18, Math.PI * 0.82);
+    g.strokeStyle = 'rgba(0,0,0,.10)'; g.lineWidth = 3; g.stroke();
+    // 左上方光源高光
+    g.beginPath();
+    g.ellipse(cx - r * 0.3, cy - r * 0.42, r * 0.3, r * 0.16, -0.6, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(255,255,255,.55)'; g.fill();
+    return c;
+  }
+
+  // 号码精灵：独立图层，随纯滚动一起旋转
+  function makeNumberSprite(n) {
+    var r = PHYS.ballR, pad = 4, size = (r + pad) * 2;
+    var c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    var g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.font = 'bold ' + Math.round(r * 0.85) + 'px -apple-system, "PingFang SC", Arial';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(pad2(n), size / 2, size / 2 + 1);
+    return c;
+  }
+
+  function buildSprites() {
+    machineUI.spheres = { red: makeSphereSprite('red'), blue: makeSphereSprite('blue') };
+    var n;
+    for (n = 1; n <= 33; n++) machineUI.numbers['r' + n] = makeNumberSprite(n);
+    for (n = 1; n <= 16; n++) machineUI.numbers['b' + n] = makeNumberSprite(n);
+  }
+
+  function buildResultRow() {
+    resultRowEl.innerHTML = '';
+    for (var i = 0; i < 7; i++) {
+      var slot = document.createElement('div');
+      slot.className = 'slot' + (i === 6 ? ' blue' : '');
+      slot.textContent = '?';
+      resultRowEl.appendChild(slot);
+    }
+  }
+
+  function clearResultRow() {
+    for (var i = 0; i < 7; i++) {
+      var slot = resultRowEl.children[i];
+      if (!slot) continue;
+      slot.className = 'slot' + (i === 6 ? ' blue' : '');
+      slot.textContent = '?';
+    }
+  }
+
+  function fillSlot(i, n, color) {
+    var slot = resultRowEl.children[i];
+    if (!slot) return;
+    slot.classList.add('filled');
+    slot.classList.remove('active');
+    slot.innerHTML = '<span class="ball sm ' + color + '">' + pad2(n) + '</span>';
+  }
+
+  function machineHooks() {
+    return {
+      onPhase: function () { updateMachineUI(); },
+      onEject: function () { updateMachineUI(); },
+      onTray: function () { updateMachineUI(); },
+      onCapture: function (n, color, count) { fillSlot(count - 1, n, color); updateMachineUI(); },
+      onDrawDone: function (captured) { finishDraw(captured); },
+    };
+  }
+
+  function physicsStart() {
+    if (machineUI.busy) { toast('开奖进行中，请稍候'); return; }
+    machineUI.busy = true;
+    machineUI.replay = null;
+    genBtn.disabled = true;
+    machineUI.remaining = state.count;
+    machineUI.totalDraws = state.count;
+    machineUI.drawSeq = 0;
+    startOneDraw();
+  }
+
+  // seed 为空时自动生成并记入 machineUI.currentSeed（写入台账用于复播）
+  function startOneDraw(seed) {
+    machineUI.drawSeq++;
+    machineUI.currentSeed = (typeof seed === 'number' && isFinite(seed)) ? (seed >>> 0) : newSeed();
+    machineUI.sim = simCreate(machineUI.currentSeed, machineHooks());
+    simReset(machineUI.sim);
+    clearResultRow();
+    updateMachineUI();
+    simStart(machineUI.sim);
+  }
+
+  function finishDraw(captured) {
+    var reds = [], blue = null;
+    captured.forEach(function (c) {
+      if (c.color === 'blue') blue = c.n; else reds.push(c.n);
+    });
+    var replay = machineUI.replay;
+    if (reds.length === 6 && blue != null) {
+      var ticket = { reds: reds.sort(function (a, b) { return a - b; }), blue: blue };
+      if (replay) {
+        // 复播：不写新台账，只与原始记录比对
+        var ok = sameTicket(ticket, replay.expect);
+        machineUI.replay = null;
+        markVerified(replay.id, ok);
+        toast(ok ? '复播完成，与原始记录一致 ✓' : '复播结果与原始记录不一致（代码版本可能已变化）');
+      } else {
+        state.current = [ticket];
+        pushHistory([ticket], 'physics', machineUI.currentSeed);
+        refreshCheck();
+      }
+    }
+    machineUI.remaining--;
+    if (machineUI.remaining > 0) {
+      setTimeout(function () {
+        if (machineUI.mode === 'physics' && machineUI.busy) startOneDraw();
+      }, 1400);
+    } else {
+      machineUI.busy = false;
+      genBtn.disabled = false;
+    }
+    updateMachineUI();
+  }
+
+  function updateMachineUI() {
+    var sim = machineUI.sim;
+    var txt;
+    if (!sim || sim.phase === 'idle') {
+      txt = machineUI.busy ? '待机中' : '待机中 · 点击「开始摇奖」';
+    } else if (sim.phase === 'mixing') {
+      txt = '红球机混合中…';
+    } else if (sim.phase === 'eject') {
+      txt = (sim.activeDrum === 'blue' ? '蓝球机' : '红球机') + '第 ' + (sim.drawCount + 1) + ' 球出球中…';
+    } else if (sim.phase === 'travel') {
+      txt = (sim.activeDrum === 'blue' ? '蓝球机' : '红球机') + '第 ' + (sim.drawCount + 1) + ' 球传送中…';
+    } else if (sim.phase === 'gap') {
+      txt = '红球机第 ' + (sim.drawCount + 1) + ' 球准备中…';
+    } else if (sim.phase === 'switch') {
+      txt = '红球机 6 球完成 · 蓝球机启动混合…';
+    } else {
+      txt = '本注开奖完成';
+    }
+    if (machineUI.totalDraws > 1 && machineUI.busy) {
+      txt += '（第 ' + machineUI.drawSeq + '/' + machineUI.totalDraws + ' 注）';
+    }
+    if (txt !== machineUI.lastPhaseText) {
+      phaseTextEl.textContent = txt;
+      machineUI.lastPhaseText = txt;
+    }
+    ballCounterEl.textContent = sim ? (sim.drawCount + ' / 7') : '0 / 7';
+    seedTextEl.textContent = machineUI.busy && machineUI.currentSeed != null
+      ? '种子 ' + machineUI.currentSeed : '';
+    progressBarEl.style.width = sim ? (sim.drawCount / 7 * 100) + '%' : '0%';
+    var cur = sim && sim.phase !== 'idle' && sim.phase !== 'done' ? sim.drawCount : -1;
+    for (var i = 0; i < 7; i++) {
+      var slot = resultRowEl.children[i];
+      if (slot) slot.classList.toggle('active', i === cur);
+    }
+  }
+
+  function setMode(mode) {
+    if (machineUI.busy) { toast('开奖进行中，无法切换模式'); return; }
+    machineUI.mode = mode;
+    var isPh = mode === 'physics';
+    physicsAreaEl.classList.toggle('hidden', !isPh);
+    quickStatusEl.classList.toggle('hidden', isPh);
+    ticketsEl.classList.toggle('hidden', isPh);
+    lockNoteEl.hidden = !isPh;
+    lockRedInput.disabled = isPh;
+    lockBlueInput.disabled = isPh;
+    genBtn.textContent = isPh ? '开始摇奖' : '开始摇号';
+    modeSegEl.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+    });
+  }
+
+  // ===== Canvas 渲染 =====
+  function strokeTubePath(ctx, T) {
+    ctx.beginPath();
+    ctx.moveTo(T.segs[0].x1, T.segs[0].y1);
+    for (var i = 0; i < T.segs.length; i++) ctx.lineTo(T.segs[i].x2, T.segs[i].y2);
+  }
+
+  function drawTube(ctx, T) {
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    strokeTubePath(ctx, T);
+    ctx.strokeStyle = '#c3cedd'; ctx.lineWidth = PHYS.tubeHW * 2 + 10; ctx.stroke();
+    strokeTubePath(ctx, T);
+    ctx.strokeStyle = '#eef3f9'; ctx.lineWidth = PHYS.tubeHW * 2 - 8; ctx.stroke();
+  }
+
+  // 机台状态文字
+  function machineStatus(sim, which) {
+    if (!sim || sim.phase === 'idle' || sim.phase === 'done') return '待机';
+    if (sim.phase === 'mixing') return which === 'red' ? '混合中' : '待机';
+    if (sim.activeDrum === which) {
+      if (sim.phase === 'eject') return '出球中';
+      if (sim.phase === 'travel') return '传送中';
+      if (sim.phase === 'gap') return '准备中';
+    }
+    if (which === 'blue' && sim.phase === 'switch') return '启动中';
+    return '待机';
+  }
+
+  // 单台摇奖机：鼓腔 + 旋转叶片 + 玻璃高光 + 金属环 + 出球口 + 机台标签
+  function drawMachine(ctx, D, omega, outletOpen, label, status, accent) {
+    var CX = D.cx, CY = D.cy, R = D.R;
+    // 机台标签
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.font = 'bold 15px -apple-system, "PingFang SC", Arial';
+    ctx.fillStyle = '#475569';
+    ctx.fillText(label, CX, CY - R - 26);
+    ctx.font = '12px -apple-system, "PingFang SC", Arial';
+    ctx.fillStyle = status === '待机' ? '#94a3b8' : accent;
+    ctx.fillText(status, CX, CY - R - 10);
+    // 腔体
+    var cg = ctx.createRadialGradient(CX - R * 0.3, CY - R * 0.35, R * 0.2, CX, CY, R);
+    cg.addColorStop(0, '#ffffff'); cg.addColorStop(1, '#e8eef6');
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI * 2);
+    ctx.fillStyle = cg; ctx.fill();
+    // 旋转叶片（可视化鼓壁旋转）
+    ctx.save();
+    ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI * 2); ctx.clip();
+    ctx.translate(CX, CY);
+    ctx.rotate(omega);
+    ctx.fillStyle = 'rgba(100,116,139,.15)';
+    for (var i = 0; i < 6; i++) {
+      ctx.save(); ctx.rotate(i * Math.PI / 3);
+      ctx.beginPath();
+      ctx.moveTo(R * 0.32, -5.5);
+      ctx.lineTo(R * 0.9, -6.5);
+      ctx.lineTo(R * 0.9, 6.5);
+      ctx.lineTo(R * 0.32, 5.5);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+    // 玻璃高光
+    ctx.beginPath();
+    ctx.arc(CX, CY, R - 8, Math.PI * 1.15, Math.PI * 1.55);
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.stroke();
+    // 外圈金属环
+    var rg = ctx.createLinearGradient(CX - R, CY - R, CX + R, CY + R);
+    rg.addColorStop(0, '#f4f7fb'); rg.addColorStop(0.5, '#c3cedd'); rg.addColorStop(1, '#e6ecf4');
+    ctx.beginPath(); ctx.arc(CX, CY, R + 7, 0, Math.PI * 2);
+    ctx.strokeStyle = rg; ctx.lineWidth = 12; ctx.stroke();
+    ctx.beginPath(); ctx.arc(CX, CY, R + 14, 0, Math.PI * 2);
+    ctx.strokeStyle = '#d4dce6'; ctx.lineWidth = 2; ctx.stroke();
+    // 出球口（鼓腔最低点）
+    var a0 = Math.PI / 2 - PHYS.outletGap, a1 = Math.PI / 2 + PHYS.outletGap;
+    ctx.beginPath(); ctx.arc(CX, CY, R + 7, a0, a1);
+    ctx.strokeStyle = outletOpen ? '#475569' : 'rgba(148,163,184,.5)';
+    ctx.lineWidth = 12; ctx.stroke();
+    ctx.beginPath(); ctx.arc(CX, CY, R - 3, a0, a1);
+    ctx.strokeStyle = outletOpen ? 'rgba(30,41,59,.35)' : 'rgba(148,163,184,.15)';
+    ctx.lineWidth = 8; ctx.stroke();
+  }
+
+  function drawTray(ctx, T) {
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(T.left, T.floor); ctx.lineTo(T.right, T.floor); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(T.right, T.floor); ctx.lineTo(T.right, T.floor - 34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(T.left, T.floor); ctx.lineTo(T.left, T.floor - 22); ctx.stroke();
+  }
+
+  function drawBalls(ctx) {
+    var sim = machineUI.sim;
+    if (!sim) return;
+    var half;
+    for (var i = 0; i < sim.balls.length; i++) {
+      var b = sim.balls[i];
+      if (b.state === 'dead') continue;
+      // 阴影（不随旋转）
+      ctx.beginPath();
+      ctx.arc(b.x + 1.5, b.y + 2.5, PHYS.ballR * 0.92, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(28,45,80,.15)'; ctx.fill();
+      // 球体（光源高光固定）
+      var sp = machineUI.spheres[b.color];
+      if (sp) { half = sp.width / 2; ctx.drawImage(sp, b.x - half, b.y - half); }
+      // 号码（随纯滚动旋转）
+      var np = machineUI.numbers[(b.color === 'red' ? 'r' : 'b') + b.n];
+      if (np) {
+        half = np.width / 2;
+        if (b.angle) {
+          ctx.save();
+          ctx.translate(b.x, b.y);
+          ctx.rotate(b.angle);
+          ctx.drawImage(np, -half, -half);
+          ctx.restore();
+        } else {
+          ctx.drawImage(np, b.x - half, b.y - half);
+        }
+      }
+    }
+  }
+
+  function drawSuction(ctx) {
+    var sim = machineUI.sim;
+    if (!sim || sim.phase !== 'eject' || !sim.outletOpen) return;
+    var O = sim.activeDrum === 'blue' ? BLUE_OUT : RED_OUT;
+    var t = performance.now() / 1000;
+    var pr = 22 + Math.sin(t * 9) * 6;
+    ctx.beginPath(); ctx.arc(O.x, O.y - 4, pr, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(47,127,224,.45)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(O.x, O.y - 4, pr * 0.55, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(47,127,224,.25)'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  function updateParticles(dt) {
+    var sim = machineUI.sim;
+    var working = sim && sim.phase !== 'idle' && sim.phase !== 'done';
+    var drums = [
+      // 红球机：初始混合及红球阶段有气流；蓝球机：仅在 switch 之后（needBlue）有气流
+      { D: PHYS.redDrum, on: sim && (sim.phase === 'mixing' || (working && !sim.needBlue)) },
+      { D: PHYS.blueDrum, on: sim && (working && sim.needBlue) },
+    ];
+    drums.forEach(function (m) {
+      if (machineUI.particles.length < 90 && Math.random() < (m.on ? 0.5 : 0.12)) {
+        machineUI.particles.push({
+          x: m.D.cx + (Math.random() - 0.5) * m.D.R * 1.5,
+          y: m.D.cy + m.D.R * (0.5 + Math.random() * 0.45),
+          vx: (Math.random() - 0.5) * 40,
+          vy: -70 - Math.random() * 110,
+          life: 0.6 + Math.random() * 0.8, age: 0,
+        });
+      }
+    });
+    for (var i = machineUI.particles.length - 1; i >= 0; i--) {
+      var p = machineUI.particles[i];
+      p.age += dt;
+      if (p.age > p.life) { machineUI.particles.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    }
+  }
+
+  function drawParticles(ctx) {
+    ctx.lineWidth = 1.5;
+    for (var i = 0; i < machineUI.particles.length; i++) {
+      var p = machineUI.particles[i];
+      ctx.globalAlpha = (1 - p.age / p.life) * 0.5;
+      ctx.strokeStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.07, p.y - p.vy * 0.07);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function renderMachine() {
+    var ctx = machineUI.ctx;
+    if (!ctx) return;
+    var sim = machineUI.sim;
+    ctx.clearRect(0, 0, 960, 540);
+    drawTube(ctx, RED_TUBE);
+    drawTube(ctx, BLUE_TUBE);
+    drawMachine(ctx, PHYS.redDrum, sim ? sim.omegaRed : 0,
+      !!(sim && sim.outletOpen && sim.activeDrum === 'red'),
+      '红球机', machineStatus(sim, 'red'), '#d92d3a');
+    drawMachine(ctx, PHYS.blueDrum, sim ? sim.omegaBlue : 0,
+      !!(sim && sim.outletOpen && sim.activeDrum === 'blue'),
+      '蓝球机', machineStatus(sim, 'blue'), '#1c5fb0');
+    drawTray(ctx, RED_TRAY);
+    drawTray(ctx, BLUE_TRAY);
+    drawBalls(ctx);
+    drawParticles(ctx);
+    drawSuction(ctx);
+  }
+
+  function machineLoop(ts) {
+    machineUI.rafId = requestAnimationFrame(machineLoop);
+    var last = machineUI.lastT || ts;
+    var dt = Math.min(0.05, Math.max(0, (ts - last) / 1000));
+    machineUI.lastT = ts;
+    var sim = machineUI.sim;
+    if (sim) {
+      machineUI.acc += dt * machineUI.speed;
+      var h = 1 / 240, guard = 0;
+      while (machineUI.acc >= h && guard < 80) { simStep(sim, h); machineUI.acc -= h; guard++; }
+      if (guard >= 80) machineUI.acc = 0;
+    }
+    updateParticles(dt);
+    updateMachineUI();
+    renderMachine();
+  }
+
+  function initMachine() {
+    machineUI.canvas = $('machineCanvas');
+    machineUI.ctx = machineUI.canvas.getContext('2d');
+    buildSprites();
+    buildResultRow();
+    machineUI.sim = simCreate(null, machineHooks());
+    simReset(machineUI.sim);
+    setMode('physics');
+    machineUI.rafId = requestAnimationFrame(machineLoop);
+  }
+
+  // ===== 设置同步 =====
+  function syncSettingsUI() {
+    countSeg.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('active', Number(b.getAttribute('data-n')) === state.count);
+    });
+    lockRedInput.value = state.lockRed;
+    lockBlueInput.value = state.lockBlue;
+  }
+
+  // ===== 事件绑定 =====
+  function bindEvents() {
+    genBtn.addEventListener('click', triggerDraw);
+
+    copyAllBtn.addEventListener('click', function () {
+      if (!state.current.length) { toast('请先摇号生成号码'); return; }
+      copyText(state.current.map(formatTicket).join('\n'), '已复制本组 ' + state.current.length + ' 注');
+    });
+
+    countSeg.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-n]');
+      if (!btn) return;
+      state.count = Number(btn.getAttribute('data-n'));
+      saveSettings();
+      syncSettingsUI();
+    });
+
+    exportLedgerBtn.addEventListener('click', exportLedger);
+
+    lockRedInput.addEventListener('input', function () {
+      state.lockRed = lockRedInput.value; saveSettings();
+    });
+    lockBlueInput.addEventListener('input', function () {
+      state.lockBlue = lockBlueInput.value; saveSettings();
+    });
+
+    pickConfirmBtn.addEventListener('click', confirmPick);
+    pickClearBtn.addEventListener('click', clearPicks);
+
+    copyHistoryBtn.addEventListener('click', function () {
+      var h = loadHistory();
+      if (!h.length) { toast('暂无历史记录'); return; }
+      copyText(h.map(function (e) { return e.tickets.map(formatTicket).join('\n'); }).join('\n'), '已复制全部历史');
+    });
+
+    clearHistoryBtn.addEventListener('click', function () {
+      if (!loadHistory().length) { toast('暂无历史记录'); return; }
+      if (window.confirm('确定清空全部历史记录？')) {
+        try { localStorage.removeItem(LS_HISTORY); } catch (e) { /* ignore */ }
+        renderHistory();
+        toast('已清空');
+      }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.code === 'Space' || e.key === ' ') {
+        var tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+        e.preventDefault();
+        triggerDraw();
+      }
+    });
+
+    modeSegEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-mode]');
+      if (btn) setMode(btn.getAttribute('data-mode'));
+    });
+
+    speedSegEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-s]');
+      if (!btn) return;
+      machineUI.speed = Number(btn.getAttribute('data-s'));
+      speedSegEl.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('active', b === btn);
+      });
+    });
+  }
+
+  function triggerDraw() {
+    if (machineUI.mode === 'physics') physicsStart(); else generate();
+  }
+
+  // ===== 初始化 =====
+  function init() {
+    loadSettings();
+    syncSettingsUI();
+    buildPickers();
+    updatePickInfo();
+    renderEmpty();
+    renderHistory();
+    initCheckPanel();
+    bindEvents();
+    initMachine();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
