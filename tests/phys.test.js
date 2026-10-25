@@ -36,15 +36,21 @@ function makeLCG(seed) {
   };
 }
 
-function runDraw(seed, maxT, numericSeed) {
+function runDraw(seed, maxT, numericSeed, pace) {
   maxT = maxT || 45;
   const rng = makeLCG(seed);
-  const events = { exits: [], done: null, capturedOmega: [] };
+  const events = { exits: [], done: null, capturedOmega: [], slots: [] };
   const s = S.simCreate(numericSeed ? seed : rng, {
     onEject: (b) => events.exits.push({ n: b.n, color: b.color, drum: b.drum, needBlue: s.needBlue }),
     onDrawDone: (c) => { events.done = c; },
-    onCapture: (n, color, count, ball) => { if (ball) events.capturedOmega.push(Math.abs(ball.omega)); },
+    onCapture: (n, color, count, ball) => {
+      if (ball) {
+        events.capturedOmega.push(Math.abs(ball.omega));
+        events.slots.push({ n: n, color: color, slot: ball.slot, x: ball.x, drum: ball.drum });
+      }
+    },
   });
+  if (pace) s.pace = pace;
   S.simReset(s);
   S.simStart(s);
   const dt = 1 / 240;
@@ -140,6 +146,16 @@ function checkDraw(tag, r) {
   assert(r.blueRestSpeed < 40,
     `${tag}: 红球阶段蓝球未静置（maxSpeed=${r.blueRestSpeed.toFixed(1)}）`);
   assert(r.blueStarted, `${tag}: 蓝球机在红球出完后未启动`);
+  // 托盘卡位：红球按出球顺序占 0..5 号槽，蓝球占 0 号槽，且落定位置贴合槽位
+  const slots = r.events.slots;
+  assert(slots.length === 7, `${tag}: 卡位记录数=${slots.length}，应为 7`);
+  for (let k = 0; k < slots.length; k++) {
+    const want = k < 6 ? k : 0;
+    assert(slots[k].slot === want, `${tag}: 第 ${k + 1} 球占用 ${slots[k].slot} 号槽，应为 ${want}`);
+    const T = slots[k].drum === 'red' ? S.RED_TRAY : S.BLUE_TRAY;
+    const dx = Math.abs(slots[k].x - T.slots[want]);
+    assert(dx < 3, `${tag}: 第 ${k + 1} 球落定偏离 ${want} 号槽 ${dx.toFixed(2)}px`);
+  }
 }
 
 // ---- 1. 多种子完整开奖 ----
@@ -188,10 +204,17 @@ for (const seed of SEEDS) {
 {
   const s = S.simCreate(makeLCG(77), {});
   S.simReset(s);
-  let escaped = 0, nan = false;
+  let escaped = 0, nan = false, above = 0, samples = 0;
   const dt = 1 / 240;
   for (let i = 0; i < 240 * 10; i++) {
     S.simStep(s, dt);
+    if (i > 240) {
+      for (const b of s.balls) {
+        if (b.drum !== 'red' || b.state !== 'drum') continue;
+        samples++;
+        if (b.y < S.PHYS.redDrum.cy) above++;
+      }
+    }
     for (const b of s.balls) {
       if (!isFinite(b.x) || !isFinite(b.y)) nan = true;
       const D = b.drum === 'red' ? S.PHYS.redDrum : S.PHYS.blueDrum;
@@ -203,7 +226,33 @@ for (const seed of SEEDS) {
   const avgY = reds.reduce((acc, b) => acc + (b.y - S.PHYS.redDrum.cy), 0) / reds.length;
   assert(!nan, '待机 10s 出现 NaN');
   assert(escaped === 0, `待机 10s 有 ${escaped} 次逃逸`);
-  assert(avgY < S.PHYS.redDrum.R * 0.9, `待机 10s 红球沉底 avgY=${avgY.toFixed(1)}，鼓风机应使其悬浮`);
+  assert(avgY < S.PHYS.redDrum.R * 0.3, `待机 10s 红球沉底 avgY=${avgY.toFixed(1)}，鼓风机应使其悬浮`);
+  const abovePct = above / Math.max(1, samples) * 100;
+  assert(abovePct > 30, `待机 10s 高于鼓心的球占比仅 ${abovePct.toFixed(1)}%，悬浮不足`);
+  console.log(`待机悬浮: avgY=${avgY.toFixed(1)} 高于鼓心 ${abovePct.toFixed(1)}%`);
+}
+
+// ---- 4b. 混合期（鼓风全开）球应在整腔内翻滚 ----
+{
+  const s = S.simCreate(makeLCG(31), {});
+  S.simReset(s);
+  S.simStart(s);
+  let above = 0, samples = 0, sumY = 0;
+  const dt = 1 / 240;
+  for (let i = 0; i < 240 * 6; i++) {
+    S.simStep(s, dt);
+    if (i < 480) continue;
+    for (const b of s.balls) {
+      if (b.drum !== 'red' || b.state !== 'drum') continue;
+      samples++; sumY += b.y - S.PHYS.redDrum.cy;
+      if (b.y < S.PHYS.redDrum.cy) above++;
+    }
+  }
+  const abovePct = above / Math.max(1, samples) * 100;
+  const avgY = sumY / Math.max(1, samples);
+  assert(abovePct > 45, `混合期高于鼓心的球占比仅 ${abovePct.toFixed(1)}%，未形成整腔翻滚`);
+  assert(avgY < 0, `混合期球重心应在鼓心之上，实际 ${avgY.toFixed(1)}px`);
+  console.log(`混合翻滚: avgY=${avgY.toFixed(1)} 高于鼓心 ${abovePct.toFixed(1)}%`);
 }
 
 // ---- 5. 多注连续开奖（模拟 remaining 链式调用） ----
@@ -240,6 +289,27 @@ for (const seed of SEEDS) {
   assert(inRange, 'lcgFromSeed 输出应落在 [0,1)');
   assert(S.simCreate(0, {}).seed === 0, '种子 0 应原样保留');
   assert(typeof S.newSeed() === 'number' && S.newSeed() >= 0, 'newSeed 应返回非负整数');
+}
+
+// ---- 7. 真实节奏档：整注时长对齐直播实测（约 86 秒），且仍满足全部物理不变量 ----
+{
+  const r = runDraw(777, 140, true, 'real');
+  checkDraw('真实节奏 seed=777', r);
+  assert(r.t > 75 && r.t < 105,
+    `真实节奏整注时长应在 75-105s（直播实测约 86s），实际 ${r.t.toFixed(1)}s`);
+  // 红球段（第 1 → 第 6 球落定）应接近 5×10.5s
+  const red = r.events.slots.filter(s => s.color === 'red');
+  assert(red.length === 6, '真实节奏红球卡位数应为 6');
+  console.log(`真实节奏 seed=777 用时 ${r.t.toFixed(1)}s`);
+}
+
+// ---- 8. 真实节奏可复现（同种子同结果） ----
+{
+  const key = r => (r.events.done || []).map(c => c.n + c.color).join(',');
+  const a = runDraw(20261022, 140, true, 'real');
+  const b = runDraw(20261022, 140, true, 'real');
+  checkDraw('真实节奏复现 A', a);
+  assert(key(a) === key(b), '真实节奏同种子两次开奖结果应完全一致');
 }
 
 if (fail) {

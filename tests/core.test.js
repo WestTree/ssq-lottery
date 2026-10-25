@@ -166,6 +166,17 @@ assert(core.normalizeDraw({ issue: '26118', date: '2026-10-15', red: ['05', '21'
 assert(core.normalizeDraw({ issue: '26118', date: '2026-10-15', red: ['05', '21', '22', '23', '28'], blue: ['14'] }) === null, 'normalizeDraw 红球缺 1 个');
 assert(core.normalizeDraw(null) === null && core.normalizeDraw('x') === null, 'normalizeDraw 非对象');
 
+// ---- normalizeDraw：数组精简格式（部署瘦身用 ["期号","日期","红球串","蓝球串"]） ----
+assert(JSON.stringify(core.normalizeDraw(['26118', '2026-10-15', '31,05,21,22,23,28', '14']))
+  === JSON.stringify({ issue: '26118', date: '2026-10-15', red: [5, 21, 22, 23, 28, 31], blue: 14 }), 'normalizeDraw 数组格式 + 乱序自动排序');
+assert(JSON.stringify(core.normalizeDraw(['26118', '2026-10-15', '5 21 22 23 28 31', '14']))
+  === JSON.stringify({ issue: '26118', date: '2026-10-15', red: [5, 21, 22, 23, 28, 31], blue: 14 }), 'normalizeDraw 数组格式 空格分隔');
+assert(core.normalizeDraw(['26118', '2026-10-15', '05,21,22,23,28']) === null, 'normalizeDraw 数组缺元素');
+assert(core.normalizeDraw(['26118', '2026-10-15', '05,21,22,23,28,34', '14']) === null, 'normalizeDraw 数组格式 红球越界');
+assert(core.normalizeDraw(['26118', '2026-10-15', '05,21,22,23,28,31', '17']) === null, 'normalizeDraw 数组格式 蓝球越界');
+assert(core.normalizeDraw([]) === null, 'normalizeDraw 空数组');
+assert(core.normalizeDraw(['26118', '2026-10-15', null, null]) === null, 'normalizeDraw 数组含 null');
+
 // ---- loadDraws ----
 {
   const hist = [
@@ -209,6 +220,25 @@ assert(core.normalizeDraw(null) === null && core.normalizeDraw('x') === null, 'n
     for (let i = 1; i < issues.length; i++) assert(issues[i - 1] > issues[i], `真实数据降序 (${issues[i - 1]} > ${issues[i]})`);
   } else {
     console.log('SKIP: data/ssq.js 不存在，跳过真实数据集成测试');
+  }
+}
+
+// ---- 部署产物集成（dist/data/ssq.js 存在时） ----
+{
+  const distPath = path.join(__dirname, '..', 'dist', 'data', 'ssq.js');
+  if (fs.existsSync(distPath)) {
+    const sandbox = {};
+    new Function('window', fs.readFileSync(distPath, 'utf8'))(sandbox);
+    const w = sandbox.window || sandbox;
+    assert(Array.isArray(w.SSQ_HISTORY), 'dist 数据可加载');
+    assert(w.SSQ_HISTORY.length === w.SSQ_KEPT, 'dist 内条数等于 SSQ_KEPT');
+    assert(w.SSQ_TOTAL >= w.SSQ_KEPT, 'dist 总期数不小于内置期数');
+    const d = core.loadDraws(w.SSQ_HISTORY, 60);
+    assert(d.length === 60, 'dist 数据前 60 期全部合法（数组精简格式解析）');
+    assert(core.checkTicket({ reds: d[0].red.slice(), blue: d[0].blue }, d[0]).level === 1, 'dist 数据算奖链路可跑通');
+    console.log(`dist 数据: ${w.SSQ_HISTORY.length} 期 / 总 ${w.SSQ_TOTAL} 期`);
+  } else {
+    console.log('SKIP: dist/data/ssq.js 不存在，跳过部署产物测试');
   }
 }
 

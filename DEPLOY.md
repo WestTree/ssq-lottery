@@ -4,10 +4,16 @@
 
 ```
 dist/
-├── index.html      页面本体（CSS/JS 全内联）
-├── data/ssq.js     3515 期开奖数据（window.SSQ_HISTORY）
+├── index.html      页面本体（CSS/JS 全内联，约 85KB / gzip 约 25KB）
+├── data/ssq.js     最近 300 期开奖数据（精简数组格式，15KB / gzip 约 4KB）
 └── _headers        缓存策略 + 基础安全头
 ```
+
+**当前线上地址**：<https://ssq-machine.pages.dev>（项目名 `ssq-machine`，`main` 为生产分支）
+
+> 数据瘦身说明：源数据 `data/ssq.js` 保留完整 3515 期（374KB），但页面下拉核对只用到最近 60 期。
+> 构建时只把最近 300 期以 `[期号,日期,"红球串","蓝球"]` 格式写入部署副本，体积降 96%；
+> 完整期数由 `window.SSQ_TOTAL` 传入，页面仍显示「完整数据集共 3515 期」，不会虚报。
 
 ## 0. 生成发布目录
 
@@ -17,14 +23,16 @@ node tools/build_dist.mjs
 
 构建时会自动校验（任一不满足直接失败，避免把坏产物传上线）：
 
-- `index.html` 引用了 `data/ssq.js`
+- `index.html` 引用了 `data/ssq.js`，且含核对卡所需节点（`drawCount` / `drawKept` / `issueSelect`）
 - 核心标记块 / 物理标记块完整
-- 数据文件包含 `window.SSQ_HISTORY` 且期数 ≥ 3000
+- 源数据可解析为 JSON 数组、期数 ≥ 3000
+- **逐条校验**全部历史记录：期号 5 位、日期真实存在、红球 6 个不重复且在 1–33、蓝球 1 个且在 1–16
+- 产出后自检：精简数据能解析回数组、条数 = 300、首条期号与源最新一期一致
 
 ## 方案 A：控制台直接上传（最快，适合先上线验证）
 
 1. 登录 <https://dash.cloudflare.com> → 左侧 **Workers & Pages** → **Create** → **Pages** → **Upload assets**
-2. 项目名填 `ssq-lottery`（可自定义），把**整个 `dist` 文件夹**拖进去
+2. 项目名填 `ssq-machine`（`pages.dev` 项目名**全局唯一**，被占用就换一个），把**整个 `dist` 文件夹**拖进去
 3. **Deploy site** → 得到 `https://<项目名>.pages.dev`
 4. 手机打开验证：物理摇奖、中奖核对、复播、台账导出
 
@@ -66,13 +74,16 @@ git add -A && git commit -m "data: 更新开奖数据" && git push
 
 → Pages 自动构建发布（每次 push 消耗 1 次构建，免费额度 500 次/月）。
 
-## 方案 C：wrangler CLI（可脚本化，便于并入自动化）
+## 方案 C：wrangler CLI（可脚本化，便于并入自动化；本项目当前用这条）
 
 ```bash
-npx wrangler pages deploy dist --project-name ssq-lottery
+export CLOUDFLARE_API_TOKEN=<你的令牌>
+export CLOUDFLARE_ACCOUNT_ID=<你的账户 ID>
+npx wrangler pages deploy dist --project-name ssq-machine --branch main --commit-dirty=true
 ```
 
-首次使用需登录：`npx wrangler login`，或在环境变量中提供 `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`（适合无人值守场景）。
+首次使用也可交互登录：`npx wrangler login`。令牌方式适合无人值守场景。
+`tools/release.sh` 已内置：检测到这两个环境变量就自动直传，否则只推 GitHub。
 
 ## 数据更新与发布的关系（重要）
 
@@ -84,7 +95,26 @@ npx wrangler pages deploy dist --project-name ssq-lottery
 
 Pages 项目 → **Custom domains** → 添加域名（域名已托管在 Cloudflare 时自动配 DNS；否则按提示加 CNAME）。
 
-> 免费版全部走海外节点，中国大陆访问速度不稳定、可能间歇不可达（受地区与运营商影响，需实测）。若主要面向大陆用户，可考虑腾讯云 COS+CDN、EdgeOne Pages 等国内方案。
+免费拿到域名的两条路（都需把 NS 托管到 Cloudflare，才能挂上 Pages）：
+
+| 途径 | 后缀示例 | 特点 |
+|---|---|---|
+| DigitalPlat FreeDomain | `xxx.dpdns.org` / `xxx.us.kg` | 免费、审核快，需把 NS 指到 Cloudflare |
+| EU.org | `xxx.eu.org` | 长期免费，人工审核，等待数天 |
+
+> **为什么值得配自有域名**：`*.pages.dev` 这个域名在国内部分网络下 TLS 握手经常被重置（实测三种结果：3.6s 后超时、15.8s 断连、少数 1.7s 成功），而换成自有域名后 SNI 不再是 `pages.dev`，通常能稳定握手。慢的是「域名」，不是「站点」。
+>
+> 免费版全部走海外节点，中国大陆访问速度不稳定、可能间歇不可达（受地区与运营商影响，需实测）。若主要面向大陆用户，可考虑腾讯云 COS+CDN、EdgeOne Pages，或用 WorkBuddy「发布为应用」生成国内链路的分享链接。
+
+## 线上实测（2026-10-17，经沙箱代理）
+
+| 资源 | 原始 | gzip 传输 | 耗时 |
+|---|---|---|---|
+| `index.html` | 85.6KB | 25.1KB | 2.1–4.1s |
+| `data/ssq.js`（瘦身后） | 14.7KB | 3.9KB | 1.7–6.9s（含重试） |
+| `data/ssq.js`（瘦身前） | 374KB | 46KB | 20s–180s，常失败 |
+
+首屏总计从「接近不可用」降到「3–8 秒可开」。但要注意：以上是**代理链路**数据，波动主要来自代理与 `pages.dev` 的 TLS 重置；浏览器直连可能更快，也可能同样被重置——这也是建议配自有域名的原因。
 
 ## 常见问题
 

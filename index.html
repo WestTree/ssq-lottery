@@ -220,6 +220,10 @@
         <div class="progress"><div class="progress-inner" id="progressBar"></div></div>
         <span class="counter" id="ballCounter">0 / 7</span>
         <span class="counter" id="seedText"></span>
+        <div class="seg sm" id="paceSeg">
+          <button type="button" data-p="fast" class="active">快速</button>
+          <button type="button" data-p="real">真实节奏</button>
+        </div>
         <div class="seg sm" id="speedSeg">
           <button type="button" data-s="1" class="active">1×</button>
           <button type="button" data-s="2">2×</button>
@@ -259,6 +263,7 @@
       <input type="text" id="lockBlue" placeholder="选填，如 8（1-16）" autocomplete="off">
     </div>
     <p class="hint">锁定的幸运号会出现在每一注中，剩余位置随机补全；随机数由浏览器加密级随机源（crypto.getRandomValues）生成，支持空格键快捷摇号。</p>
+    <p class="hint">摇奖机可选「快速」或「真实节奏」：真实节奏按 2026-10-22 第 2026121 期直播实测还原（红球约 10.5 秒出 1 颗，最后一颗红球到蓝球约 26 秒，整注约 86 秒），可配合 1×/2×/4× 倍速观看。</p>
     <p class="hint lock-note" id="lockNote" hidden>物理摇奖模式下，开奖结果由摇奖机内的混沌混合与碰撞决定，不支持幸运号锁定。</p>
   </section>
 
@@ -286,7 +291,7 @@
     </div>
     <div class="draw-balls" id="drawBalls"></div>
     <div id="checkResult"></div>
-    <p class="hint">开奖数据来源：500.com（datachart.500.com），本地共 <span id="drawCount">0</span> 期，最新更新至 <span id="drawUpdated">-</span>；由 tools/update_ssq_data.mjs 更新。号码由本地摇奖产生，与开奖机构无关，仅供娱乐。</p>
+    <p class="hint">开奖数据来源：500.com（datachart.500.com），完整数据集共 <span id="drawCount">0</span> 期，最新更新至 <span id="drawUpdated">-</span>；本页内置最近 <span id="drawKept">0</span> 期供核对。号码由本地摇奖产生，与开奖机构无关，仅供娱乐。</p>
   </section>
 
   <section class="card">
@@ -463,8 +468,20 @@
   }
 
   // ===== 开奖历史数据规范化 =====
-  // 将数据文件中的记录转为 { issue, date, red:[数字升序], blue:数字 }；非法记录返回 null
+  // 支持两种记录格式：
+  //   对象型 { issue, date, red:["05",...], blue:["14"] }（完整数据文件）
+  //   数组型 ["26118","2026-10-15","05,21,22,23,28,31","14"]（部署用精简数据）
+  // 返回 { issue, date, red:[数字升序], blue:数字 }；非法记录返回 null
   function normalizeDraw(d) {
+    if (Array.isArray(d)) {
+      if (d.length < 4) return null;
+      d = {
+        issue: d[0],
+        date: d[1],
+        red: String(d[2] == null ? '' : d[2]).split(/[ ,]+/).filter(Boolean),
+        blue: String(d[3] == null ? '' : d[3]).split(/[ ,]+/).filter(Boolean)
+      };
+    }
     if (!d || typeof d !== 'object') return null;
     var issue = String(d.issue == null ? '' : d.issue);
     var date = String(d.date == null ? '' : d.date);
@@ -537,6 +554,7 @@
   var progressBarEl = $('progressBar');
   var ballCounterEl = $('ballCounter');
   var speedSegEl = $('speedSeg');
+  var paceSegEl = $('paceSeg');
   var lockNoteEl = $('lockNote');
   var checkCardEl = $('checkCard');
   var issueSelectEl = $('issueSelect');
@@ -544,6 +562,7 @@
   var drawBallsEl = $('drawBalls');
   var checkResultEl = $('checkResult');
   var drawCountEl = $('drawCount');
+  var drawKeptEl = $('drawKept');
   var drawUpdatedEl = $('drawUpdated');
   var ledgerBoxEl = $('ledgerBox');
   var ledgerTotalEl = $('ledgerTotal');
@@ -552,7 +571,7 @@
   var exportLedgerBtn = $('exportLedgerBtn');
   var seedTextEl = $('seedText');
 
-  var state = { count: 1, lockRed: '', lockBlue: '', current: [] };
+  var state = { count: 1, lockRed: '', lockBlue: '', current: [], pace: 'fast' };
   var picks = { red: [], blue: null };
   var statusTimer = null;
   var toastTimer = null;
@@ -603,12 +622,13 @@
       if ([1, 3, 5, 10].indexOf(s.count) > -1) state.count = s.count;
       if (typeof s.lockRed === 'string') state.lockRed = s.lockRed;
       if (typeof s.lockBlue === 'string') state.lockBlue = s.lockBlue;
+      if (s.pace === 'fast' || s.pace === 'real') state.pace = s.pace;
     } catch (e) { /* ignore */ }
   }
   function saveSettings() {
     try {
       localStorage.setItem(LS_SETTINGS, JSON.stringify({
-        count: state.count, lockRed: state.lockRed, lockBlue: state.lockBlue
+        count: state.count, lockRed: state.lockRed, lockBlue: state.lockBlue, pace: state.pace
       }));
     } catch (e) { /* ignore */ }
   }
@@ -1003,7 +1023,8 @@
     }
     checkDraws = loadDraws(raw, 60);
     if (!checkDraws.length) { checkCardEl.style.display = 'none'; return; }
-    drawCountEl.textContent = String(raw.length);
+    drawCountEl.textContent = String(window.SSQ_TOTAL || raw.length);
+    if (drawKeptEl) drawKeptEl.textContent = String(window.SSQ_KEPT || raw.length);
     drawUpdatedEl.textContent = checkDraws[0].date;
     checkDraws.forEach(function (d) {
       var opt = document.createElement('option');
@@ -1120,37 +1141,86 @@
     omegaIdle: 1.0,          // 鼓壁角速度 rad/s
     omegaMix: 3.6,
     blowerIdle: 0.4,         // 鼓风机强度系数
-    blowerMix: 1.0,
-    blowerEject: 0.45,       // 出球阶段减弱，便于抽吸取球
+    blowerMix: 1.28,         // 混合期鼓风（提高 → 球更长时间悬空翻滚）
+    blowerEject: 0.55,       // 出球阶段减弱，便于抽吸取球
+    blowerLift: 7600,        // 上升气流加速度（px/s^2，按鼓风系数缩放）
+    zoneTop: 0.8,            // 气流作用上边界（相对鼓心向上 R 的倍数：抬升覆盖整个鼓腔）
+    zoneSpan: 1.8,           // 气流衰减跨度（相对 R 的倍数）
+    turbX: 320,              // 横向湍流幅度
+    turbY: 250,              // 纵向湍流幅度
+    swirl: 300,              // 旋流强度
     restBall: 0.9,           // 球-球恢复系数
     restWall: 0.8,           // 球-壁恢复系数
     wallFriction: 0.14,      // 鼓壁切向摩擦
-    airDrag: 0.16,
+    airDrag: 0.12,           // 空气阻力（降低 → 滞空更久）
     outletGap: 0.22,         // 出球口缺口半宽（弧度，位于鼓腔最低点）
     suction: 8000,           // 抽吸力
     suctionRange: 135,
-    exitBoost: 200,          // 出球时沿管道轴向的初速
-    mixDuration: 1.0,        // 混合时长（秒）
-    switchDuration: 0.9,     // 红球开完后切换蓝球机的展示时长（秒）
-    gapDuration: 0.3,        // 两球间隔（秒）
-    tubeHW: 19,              // 管道半宽
-    tubeFlow: 170,           // 沿管气流
-    tubeDrag: 0.5,           // 管内空气阻力
+    exitBoost: 200,          // 出球时沿导轨首段方向的初速
+    tubeHW: 22,              // 导轨半宽
+    tubeFlow: 330,           // 沿轨气流
+    tubeDrag: 0.5,           // 轨内空气阻力
+    slotPitch: 30,           // 托盘卡位间距
     maxBallSpeed: 1600,
-    travelTimeout: 10,       // 出球后在途超时兜底（秒）
+    travelTimeout: 12,       // 出球后在途超时兜底（秒）
+    // 节奏档：fast = 快速（默认）；real = 对齐直播实测（约 86 秒/注）
+    // 实测依据：2026-10-22 第 2026121 期直播，红球段约 63s 出 6 球（≈10.5s/球），
+    //          最后一个红球落定到蓝球落定约 26s（含蓝球机启动与混合）
+    fast: { mix: 1.0, gap: 0.3, switch: 0.9 },
+    real: { mix: 8.0, ballGap: 10.5, blueGap: 26 },
   };
   var RED_OUT = { x: PHYS.redDrum.cx, y: PHYS.redDrum.cy + PHYS.redDrum.R };
   var BLUE_OUT = { x: PHYS.blueDrum.cx, y: PHYS.blueDrum.cy + PHYS.blueDrum.R };
 
-  // 管道：出球口 → 托盘（单段直下斜坡，无拐角）
-  function makeTube(x1, y1, x2, y2) {
-    var dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
-    return { segs: [{ x1: x1, y1: y1, x2: x2, y2: y2 }], dir: { x: dx / L, y: dy / L }, len: L };
+  // 拐角倒角：直角折线处球会被两侧约束夹死，插入 45° 过渡点
+  function chamferPath(pts, c) {
+    var out = [pts[0]];
+    for (var i = 1; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1];
+      var l1 = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+      var l2 = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      var a1 = Math.min(c, l1 / 2), a2 = Math.min(c, l2 / 2);
+      out.push({ x: p1.x - (p1.x - p0.x) / l1 * a1, y: p1.y - (p1.y - p0.y) / l1 * a1 });
+      out.push({ x: p1.x + (p2.x - p1.x) / l2 * a2, y: p1.y + (p2.y - p1.y) / l2 * a2 });
+    }
+    out.push(pts[pts.length - 1]);
+    return out;
   }
-  var RED_TUBE = makeTube(RED_OUT.x, RED_OUT.y + 5, 430, 445);
-  var BLUE_TUBE = makeTube(BLUE_OUT.x, BLUE_OUT.y + 5, 570, 445);
-  var RED_TRAY = { left: 385, right: 530, floor: 470 };
-  var BLUE_TRAY = { left: 555, right: 700, floor: 470 };
+
+  // 导轨：出口竖直下坠 → 水平导轨 → 末端短坠入托盘（多段折线，累计弧长用于出轨判定）
+  function makeTube(pts) {
+    var segs = [], total = 0;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var a = pts[i], b = pts[i + 1];
+      var L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      segs.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, s0: total, len: L });
+      total += L;
+    }
+    var d0 = segs[0];
+    return { pts: pts, segs: segs, len: total, dir: { x: (d0.x2 - d0.x1) / d0.len, y: (d0.y2 - d0.y1) / d0.len } };
+  }
+  var RAIL_Y = 352;   // 水平导轨高度
+  var TRAY_FLOOR = 470;
+  var RED_TUBE = makeTube(chamferPath([
+    { x: RED_OUT.x, y: RED_OUT.y + 5 }, { x: RED_OUT.x, y: RAIL_Y },
+    { x: 520, y: RAIL_Y }, { x: 520, y: 442 },
+  ], 10));
+  var BLUE_TUBE = makeTube(chamferPath([
+    { x: BLUE_OUT.x, y: BLUE_OUT.y + 5 }, { x: BLUE_OUT.x, y: RAIL_Y },
+    { x: 804, y: RAIL_Y }, { x: 804, y: 442 },
+  ], 10));
+
+  // 托盘：n 个卡位，球按出球顺序从左到右落位（与直播画面一致）
+  function makeTray(x0, floor, n) {
+    var slots = [];
+    for (var i = 0; i < n; i++) slots.push(x0 + i * PHYS.slotPitch);
+    return {
+      left: x0 - 15, right: x0 + (n - 1) * PHYS.slotPitch + 15, floor: floor,
+      slots: slots, drop: slots[slots.length - 1],
+    };
+  }
+  var RED_TRAY = makeTray(370, TRAY_FLOOR, 6);
+  var BLUE_TRAY = makeTray(654, TRAY_FLOOR, 6);
 
   function drumOf(b) { return b.drum === 'red' ? PHYS.redDrum : PHYS.blueDrum; }
   function outOf(b) { return b.drum === 'red' ? RED_OUT : BLUE_OUT; }
@@ -1198,11 +1268,14 @@
       outletOpen: false, activeDrum: 'red',
       omegaRed: PHYS.omegaIdle, omegaBlue: PHYS.omegaIdle,
       drawCount: 0, captured: [], needBlue: false, ejectedTotal: 0,
+      pace: 'fast',                       // 'fast' 快速 | 'real' 真实节奏
+      nextOpenAt: 0, lastOpenAt: 0,       // 真实节奏下的开闸排程（sim.time 基准）
+      trayCount: { red: 0, blue: 0 },     // 各机托盘已占卡位数
     };
   }
 
   function simBall(n, color, drum) {
-    return { n: n, color: color, drum: drum, x: 0, y: 0, vx: 0, vy: 0, state: 'drum', settleT: 0, trayT: 0, angle: 0, omega: 0 };
+    return { n: n, color: color, drum: drum, x: 0, y: 0, vx: 0, vy: 0, state: 'drum', settleT: 0, trayT: 0, angle: 0, omega: 0, slot: -1 };
   }
 
   function simReset(sim) {
@@ -1228,6 +1301,8 @@
     sim.outletOpen = false; sim.ejectedTotal = 0;
     sim.activeDrum = 'red';
     sim.omegaRed = PHYS.omegaIdle; sim.omegaBlue = PHYS.omegaIdle;
+    sim.nextOpenAt = 0; sim.lastOpenAt = 0;
+    sim.trayCount = { red: 0, blue: 0 };
   }
 
   function simStart(sim) { sim.phase = 'mixing'; sim.phaseT = 0; }
@@ -1254,6 +1329,25 @@
       var cp = closestOnSeg(segs[i].x1, segs[i].y1, segs[i].x2, segs[i].y2, px, py);
       var d = (cp.x - px) * (cp.x - px) + (cp.y - py) * (cp.y - py);
       if (d < bestD) { bestD = d; best = cp; }
+    }
+    return best;
+  }
+
+  // 折线最近点 + 所在段方向 + 累计弧长（多段导轨用：靠它判断是否已到轨口）
+  function polyInfo(segs, px, py) {
+    var best = null, bestD = Infinity;
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      var cp = closestOnSeg(s.x1, s.y1, s.x2, s.y2, px, py);
+      var d = (cp.x - px) * (cp.x - px) + (cp.y - py) * (cp.y - py);
+      if (d < bestD) {
+        bestD = d;
+        var local = Math.hypot(cp.x - s.x1, cp.y - s.y1);
+        best = {
+          cx: cp.x, cy: cp.y, s: (s.s0 || 0) + local,
+          dx: (s.x2 - s.x1) / s.len, dy: (s.y2 - s.y1) / s.len,
+        };
+      }
     }
     return best;
   }
@@ -1370,14 +1464,18 @@
   // （若持续接触也按比例损能，球会以极低终端速度"贴地爬行"）
   function tubeStep(sim, b, dt) {
     var T = tubeOf(b);
+    // 沿球当前所在段的轴向输送（竖直段向下、水平段向右），气流把球推着走
+    var info = polyInfo(T.segs, b.x, b.y);
+    var fdx = info.dx, fdy = info.dy;
     b.vy += PHYS.g * dt;
-    b.vx += T.dir.x * PHYS.tubeFlow * dt;
-    b.vy += T.dir.y * PHYS.tubeFlow * dt;
+    b.vx += fdx * PHYS.tubeFlow * dt;
+    b.vy += fdy * PHYS.tubeFlow * dt;
     var drag = 1 - PHYS.tubeDrag * dt;
     b.vx *= drag; b.vy *= drag;
     b.x += b.vx * dt; b.y += b.vy * dt;
-    // 管壁约束：以整条折线的最近点投影，避免拐角处分段约束互相拉扯
-    var cp = closestOnPolyline(T.segs, b.x, b.y);
+    // 轨壁约束：以整条折线的最近点投影，避免拐角处分段约束互相拉扯
+    info = polyInfo(T.segs, b.x, b.y);
+    var cp = { x: info.cx, y: info.cy };
     var dx = b.x - cp.x, dy = b.y - cp.y;
     var d = Math.hypot(dx, dy) || 1;
     var maxD = PHYS.tubeHW - PHYS.ballR;
@@ -1406,38 +1504,62 @@
         b.omega = Math.max(-60, Math.min(60, -vt2 / PHYS.ballR));
       }
     }
-    // 越过管口（沿管轴投影）→ 落入本机托盘
-    var s = (b.x - T.segs[0].x1) * T.dir.x + (b.y - T.segs[0].y1) * T.dir.y;
-    if (s >= T.len - PHYS.ballR * 0.3) {
+    // 越过轨口（按折线累计弧长判定）→ 落入本机托盘，领取卡位号
+    if (info.s >= T.len - PHYS.ballR * 0.4) {
       b.state = 'tray'; b.trayT = 0; b.settleT = 0;
+      b.slot = sim.trayCount[b.drum] || 0;
+      sim.trayCount[b.drum] = b.slot + 1;
       if (sim.hooks.onTray) sim.hooks.onTray(b);
     }
   }
 
-  // 托盘内弹跳沉降：速度低于阈值持续 0.3s 即视为落定
+  // 托盘沉降：落槽后由卡位弹簧拉向编号槽位，到位锁死
+  // 槽位按出球顺序从左到右分配，与直播托盘一致（第 1 球在最左）
   function trayStep(sim, b, dt) {
     var T = trayOf(b);
     b.vy += PHYS.g * dt;
-    b.vx *= (1 - 1.2 * dt);
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (b.y > T.floor - PHYS.ballR) {
       b.y = T.floor - PHYS.ballR;
       if (b.vy > 0) {
-        if (b.vy > 60) b.vy = -b.vy * 0.35; else b.vy = 0;
+        if (b.vy > 60) b.vy = -b.vy * 0.32; else b.vy = 0;
       }
-      b.vx *= (1 - 2.5 * dt); // 地面持续阻尼：滚着减速停下
+      var slot = Math.max(0, Math.min(T.slots.length - 1, b.slot == null ? 0 : b.slot));
+      var target = T.slots[slot];
+      var dx = target - b.x;
+      if (Math.abs(dx) > 0.6) {
+        b.vx += dx * 42 * dt;          // 卡位弹簧
+        b.vx *= (1 - 9 * dt);          // 阻尼
+        if (b.x < T.left + PHYS.ballR) { b.x = T.left + PHYS.ballR; b.vx = 0; }
+        if (b.x > T.right - PHYS.ballR) { b.x = T.right - PHYS.ballR; b.vx = 0; }
+      } else {
+        b.x = target; b.vx = 0;
+      }
       // 地板纯滚动：角速度随线速度衰减，停止时自旋归零
       b.omega = Math.max(-60, Math.min(60, -b.vx / PHYS.ballR));
     }
-    if (b.x < T.left + PHYS.ballR) { b.x = T.left + PHYS.ballR; b.vx = Math.abs(b.vx) * 0.5; }
-    if (b.x > T.right - PHYS.ballR) { b.x = T.right - PHYS.ballR; b.vx = -Math.abs(b.vx) * 0.5; }
     b.trayT += dt;
     if (Math.hypot(b.vx, b.vy) < 45) b.settleT += dt; else b.settleT = 0;
     if (b.settleT > 0.3 || b.trayT > 8) captureBall(sim, b);
   }
 
+  // 节奏档参数：fast 用固定时长；real 用「落定→下一球落定」的实测间隔排程
+  function paceOf(sim) { return sim.pace === 'real' ? PHYS.real : PHYS.fast; }
+
+  function openOutlet(sim, drum) {
+    sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
+    sim.activeDrum = drum;
+    sim.lastOpenAt = sim.time;
+    if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
+  }
+
   function captureBall(sim, b) {
-    b.state = 'dead';
+    // 落定后留在托盘卡位里（不消失），与直播画面一致：6 颗红球逐个排开
+    var T = trayOf(b);
+    var slot = Math.max(0, Math.min(T.slots.length - 1, b.slot == null ? 0 : b.slot));
+    b.state = 'placed';
+    b.x = T.slots[slot]; b.y = T.floor - PHYS.ballR;
+    b.vx = 0; b.vy = 0; b.omega = 0;
     sim.captured.push({ n: b.n, color: b.color });
     sim.drawCount++;
     sim.needBlue = sim.drawCount >= 6; // 前 6 球红球机，第 7 球蓝球机
@@ -1450,24 +1572,32 @@
     } else {
       sim.phase = 'gap';
     }
+    // 真实节奏：下次开闸时刻 = 本次落定 + (目标间隔 - 本次在途耗时)
+    if (sim.pace === 'real' && sim.drawCount < 7) {
+      var conf = paceOf(sim);
+      var interval = sim.drawCount >= 6 ? conf.blueGap : conf.ballGap;
+      var transit = Math.max(0.2, sim.time - sim.lastOpenAt);
+      sim.nextOpenAt = sim.time + Math.max(0.5, interval - transit);
+    }
     if (sim.hooks.onCapture) sim.hooks.onCapture(b.n, b.color, sim.drawCount, b);
   }
 
   // 单步物理推进 + 相位机
   function simStep(sim, dt) {
+    var conf = paceOf(sim);
+    var real = sim.pace === 'real';
     sim.time += dt; sim.phaseT += dt; sim.simTime += dt;
-    if (sim.phase === 'mixing' && sim.phaseT >= PHYS.mixDuration) {
-      sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
-      sim.activeDrum = sim.needBlue ? 'blue' : 'red';
-      if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
-    } else if (sim.phase === 'gap' && sim.phaseT >= PHYS.gapDuration) {
-      sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
-      sim.activeDrum = sim.needBlue ? 'blue' : 'red';
-      if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
-    } else if (sim.phase === 'switch' && sim.phaseT >= PHYS.switchDuration) {
-      sim.phase = 'eject'; sim.phaseT = 0; sim.outletOpen = true;
-      sim.activeDrum = 'blue';
-      if (sim.hooks.onPhase) sim.hooks.onPhase('eject');
+    if (sim.phase === 'mixing' && sim.phaseT >= conf.mix) {
+      openOutlet(sim, 'red');
+    } else if (sim.phase === 'gap') {
+      // 真实节奏按排程等闸；快速档按固定间隔
+      if (real ? sim.time >= sim.nextOpenAt : sim.phaseT >= conf.gap) {
+        openOutlet(sim, sim.needBlue ? 'blue' : 'red');
+      }
+    } else if (sim.phase === 'switch') {
+      if (real ? sim.time >= sim.nextOpenAt : sim.phaseT >= conf.switch) {
+        openOutlet(sim, 'blue');
+      }
     } else if (sim.phase === 'travel' && sim.phaseT > PHYS.travelTimeout) {
       // 兜底：在途超时，管道中的球直接送到管口，托盘中的球直接捕获
       for (var i = 0; i < sim.balls.length; i++) {
@@ -1516,19 +1646,19 @@
         var blower = b.drum === 'red' ? redBlower : blueBlower;
         var omega = b.drum === 'red' ? sim.omegaRed : sim.omegaBlue;
         b.vy += PHYS.g * dt;
-        // 鼓风机：底部区域上升气流 + 湍流 + 旋转旋流
-        var zoneY = D.cy + D.R * 0.15;
-        var zone = (b.y - zoneY) / (D.R * 0.85);
+        // 鼓风机：底部进气、整腔承托（流化床式）——球在腔内被反复抛起再落下
+        var zoneY = D.cy - D.R * PHYS.zoneTop;
+        var zone = (b.y - zoneY) / (D.R * PHYS.zoneSpan);
         if (zone > 0) {
-          var s = Math.min(zone, 1) * blower * 5600;
+          var s = Math.min(zone, 1) * blower * PHYS.blowerLift;
           b.vy -= s * dt;
           var t = sim.time;
-          b.vx += Math.sin(t * 6.3 + b.x * 0.07 + b.n * 1.7) * 300 * blower * dt;
-          b.vy += Math.cos(t * 5.1 + b.y * 0.07 + b.n * 2.3) * 190 * blower * dt;
+          b.vx += Math.sin(t * 6.3 + b.x * 0.07 + b.n * 1.7) * PHYS.turbX * blower * dt;
+          b.vy += Math.cos(t * 5.1 + b.y * 0.07 + b.n * 2.3) * PHYS.turbY * blower * dt;
           var dx = b.x - D.cx, dy = b.y - D.cy;
           var d = Math.hypot(dx, dy) || 1;
-          b.vx += (-dy / d) * omega * 300 * blower * dt;
-          b.vy += (dx / d) * omega * 300 * blower * dt;
+          b.vx += (-dy / d) * omega * PHYS.swirl * blower * dt;
+          b.vy += (dx / d) * omega * PHYS.swirl * blower * dt;
         }
         // 出球口抽吸：仅工作中的机台且口门开启
         if (sim.outletOpen && sim.activeDrum === b.drum) {
@@ -1667,6 +1797,7 @@
     machineUI.drawSeq++;
     machineUI.currentSeed = (typeof seed === 'number' && isFinite(seed)) ? (seed >>> 0) : newSeed();
     machineUI.sim = simCreate(machineUI.currentSeed, machineHooks());
+    machineUI.sim.pace = state.pace === 'real' ? 'real' : 'fast';
     simReset(machineUI.sim);
     clearResultRow();
     updateMachineUI();
@@ -1722,6 +1853,11 @@
       txt = '红球机 6 球完成 · 蓝球机启动混合…';
     } else {
       txt = '本注开奖完成';
+    }
+    // 真实节奏：等待开闸期间显示倒计时
+    if (sim && sim.pace === 'real' && (sim.phase === 'gap' || sim.phase === 'switch')) {
+      var wait = Math.max(0, sim.nextOpenAt - sim.time);
+      if (wait > 0.8) txt += '（' + Math.ceil(wait) + 's）';
     }
     if (machineUI.totalDraws > 1 && machineUI.busy) {
       txt += '（第 ' + machineUI.drawSeq + '/' + machineUI.totalDraws + ' 注）';
@@ -1839,12 +1975,27 @@
     ctx.lineWidth = 8; ctx.stroke();
   }
 
+  // 托盘：横槽 + 卡位隔断（球按出球顺序逐个落位）
   function drawTray(ctx, T) {
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // 底槽
+    ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(T.left, T.floor + 6); ctx.lineTo(T.right, T.floor + 6); ctx.stroke();
+    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(T.left + 4, T.floor + 2); ctx.lineTo(T.right - 4, T.floor + 2); ctx.stroke();
+    // 两端立边
     ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.moveTo(T.left, T.floor); ctx.lineTo(T.right, T.floor); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(T.right, T.floor); ctx.lineTo(T.right, T.floor - 34); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(T.left, T.floor); ctx.lineTo(T.left, T.floor - 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(T.left, T.floor + 6); ctx.lineTo(T.left, T.floor - 18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(T.right, T.floor + 6); ctx.lineTo(T.right, T.floor - 30); ctx.stroke();
+    // 卡位隔断（相邻槽位中点）
+    ctx.strokeStyle = 'rgba(148,163,184,.75)'; ctx.lineWidth = 2;
+    for (var i = 0; i <= T.slots.length; i++) {
+      var x = T.slots[0] - PHYS.slotPitch / 2 + i * PHYS.slotPitch;
+      ctx.beginPath();
+      ctx.moveTo(x, T.floor + 4);
+      ctx.lineTo(x, T.floor - 10);
+      ctx.stroke();
+    }
   }
 
   function drawBalls(ctx) {
@@ -1984,6 +2135,11 @@
     countSeg.querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', Number(b.getAttribute('data-n')) === state.count);
     });
+    if (paceSegEl) {
+      paceSegEl.querySelectorAll('button').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-p') === state.pace);
+      });
+    }
     lockRedInput.value = state.lockRed;
     lockBlueInput.value = state.lockBlue;
   }
@@ -2054,6 +2210,18 @@
         b.classList.toggle('active', b === btn);
       });
     });
+
+    if (paceSegEl) {
+      paceSegEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-p]');
+        if (!btn) return;
+        if (machineUI.busy) { toast('开奖进行中，无法切换节奏'); return; }
+        state.pace = btn.getAttribute('data-p') === 'real' ? 'real' : 'fast';
+        saveSettings();
+        syncSettingsUI();
+        toast(state.pace === 'real' ? '真实节奏：约 86 秒/注（对齐直播实测）' : '快速节奏：约 19 秒/注');
+      });
+    }
   }
 
   function triggerDraw() {
