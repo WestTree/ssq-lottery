@@ -122,6 +122,7 @@ Pages 项目 → **Custom domains** → 添加域名（域名已托管在 Cloudf
 |---|---|
 | `wrangler` 报 `Invalid access token [code: 9109]` | 令牌过期或已被删。用 `curl -H "Authorization: Bearer <token>" https://api.cloudflare.com/client/v4/user/tokens/verify` 查过期时间，重新生成（权限 Pages:Edit）后重试 |
 | `wrangler` 报 `In a non-interactive environment...` | 无 TTY 时必须给 `CLOUDFLARE_API_TOKEN`；本机 OAuth 缓存无法在无终端环境刷新 |
+| 摇完奖「历史记录」里没有本次结果 | 旧版 `saveHistory` 会把存储异常吃掉（隐私模式、禁用站点数据、配额满）。已修复：记录降级到当前页内存，并在摇奖舞台下方显示「已记入历史 · 种子 xxx」或红色失败原因。若仍看不到，先确认线上是不是旧版本（`curl -s https://<域名>/ | wc -c`，新版约 101KB） |
 | 页面能开，但「中奖核对」卡片消失 | `data/ssq.js` 未加载。访问 `https://<域名>/data/ssq.js` 确认可打开且类型为 JS |
 | 复播提示「与原始记录不一致」 | 物理参数或模拟代码改动过，同种子结果变化。属诚实审计行为，旧记录仍可查看 |
 | 发版后仍是旧页面 | 强刷一次（HTML 为 `must-revalidate`）；`data/ssq.js` 缓存 5 分钟 |

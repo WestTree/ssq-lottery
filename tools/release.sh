@@ -1,7 +1,7 @@
 #!/bin/sh
 # 一键发布：更新数据 -> 测试 -> 构建 -> 部署（Cloudflare Pages）-> 推送 GitHub
 # 用法:
-#   sh tools/release.sh                     仅本地构建 + 提交推送（GitHub Pages 生效）
+#   sh tools/release.sh                     仅本地构建 + 提交推送（Pages 已接 Git 集成时才会自动发布）
 #   CLOUDFLARE_API_TOKEN=xxx \
 #   CLOUDFLARE_ACCOUNT_ID=yyy sh tools/release.sh   额外用 wrangler 直传 Pages（推荐）
 set -e
@@ -12,6 +12,8 @@ node tools/update_ssq_data.mjs
 
 echo "[2/6] 核心逻辑自测"
 node tests/core.test.js
+echo "      历史记录落盘回归"
+node tests/history.test.js
 
 echo "[3/6] 构建发布目录（数据瘦身）"
 node tools/build_dist.mjs
