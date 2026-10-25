@@ -162,6 +162,9 @@
 
   /* ===== 物理摇奖机 ===== */
   .hidden{display:none !important}
+  /* 作者样式里的 display:flex/grid 会盖掉浏览器对 [hidden] 的默认隐藏，
+     这里统一兜住，避免出现「设置了 hidden 却仍占位」的空条 */
+  [hidden]{display:none !important}
   .result-row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;min-height:42px}
   .slot{width:40px;height:40px;border-radius:50%;border:2px dashed #cbd5e1;display:flex;align-items:center;justify-content:center;color:#b6c0cf;font-weight:700;font-size:15px;background:#f8fafc;flex:none}
   .slot.blue{border-color:#a9c8f0}

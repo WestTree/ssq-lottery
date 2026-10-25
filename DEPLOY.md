@@ -108,6 +108,8 @@ Pages 项目 → **Custom domains** → 添加域名（域名已托管在 Cloudf
 
 ## 线上实测（2026-10-17，经沙箱代理）
 
+> 2026-10-25 已用 wrangler 重发新版：`index.html` 101.4KB（含卡位托盘、真实节奏档、历史记录落盘提示）。判断线上新旧：`curl -s https://ssq-machine.pages.dev/ | wc -c`，旧版约 87.6KB。
+
 | 资源 | 原始 | gzip 传输 | 耗时 |
 |---|---|---|---|
 | `index.html` | 85.6KB | 25.1KB | 2.1–4.1s |

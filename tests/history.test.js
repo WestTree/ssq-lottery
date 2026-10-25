@@ -64,6 +64,9 @@ window.addEventListener('load', function () {
       return sim.phase;
     }
     try {
+      // 回归守卫：hidden 属性必须真的隐藏（作者样式里的 display 容易把它盖掉）
+      var sn0 = document.getElementById('saveNote');
+      p('noteInit=' + getComputedStyle(sn0).display);
       document.getElementById('genBtn').click();
       p('phase=' + drive());
       T.ui();
@@ -163,6 +166,7 @@ function main() {
   console.log('【1】正常存储：物理摇奖后应写入历史');
   const a = runCase(chrome, html, 'ok', 'normal');
   assert(a.phase === 'done', '物理过程跑完', a.phase);
+  assert(a.noteInit === 'none', '未摇奖时提示条保持隐藏（不占位）', a.noteInit);
   assert(a.histN === '1', '历史记录写入 1 条', a.histN);
   assert(a.mode === 'physics', '记录来源标记为 physics', a.mode);
   assert(/^\d+$/.test(a.seed || ''), '记录带可复播种子', a.seed);
