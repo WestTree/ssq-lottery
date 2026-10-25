@@ -126,6 +126,13 @@
     display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
   .hot-group{display:inline-flex;gap:5px}
   .h-seed{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .h-row.fresh{animation:freshIn 2.6s ease-out}
+  @keyframes freshIn{0%{background:rgba(229,72,77,.16)}60%{background:rgba(229,72,77,.06)}100%{background:transparent}}
+  .h-row.bad{color:#b3353a;font-size:12px}
+  .save-note{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+    margin:10px 0 2px;padding:8px 12px;border-radius:10px;font-size:13px;
+    background:rgba(46,160,93,.09);color:#1f7a46;border:1px solid rgba(46,160,93,.22)}
+  .save-note.warn{background:rgba(229,72,77,.09);color:#b3353a;border-color:rgba(229,72,77,.26)}
   .ledger{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
     display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
   .ledger b{color:var(--text);font-variant-numeric:tabular-nums}
@@ -230,6 +237,7 @@
           <button type="button" data-s="4">4×</button>
         </div>
       </div>
+      <div class="save-note" id="saveNote" hidden></div>
     </div>
 
     <div class="status-line hidden" id="quickStatus">
@@ -570,6 +578,7 @@
   var ledgerOkEl = $('ledgerOk');
   var exportLedgerBtn = $('exportLedgerBtn');
   var seedTextEl = $('seedText');
+  var saveNoteEl = $('saveNote');
 
   var state = { count: 1, lockRed: '', lockBlue: '', current: [], pace: 'fast' };
   var picks = { red: [], blue: null };
@@ -606,15 +615,55 @@
   }
 
   // ===== 本地存储 =====
+  // memHistory：当前页内存镜像。localStorage 被禁用/配额满/隐私模式时，
+  // 记录仍能在本页显示，不会出现「摇完什么都没留下」却毫无提示的情况。
+  var memHistory = [];
+  var storageError = null;   // 最近一次写入失败原因（null 表示正常）
+  var storageWarned = false; // 失败提示只弹一次
+
+  function storageReason(e) {
+    var n = (e && e.name) || '';
+    if (n === 'QuotaExceededError' || n === 'NS_ERROR_DOM_QUOTA_REACHED') return '存储空间已满';
+    if (n === 'SecurityError') return '浏览器禁用了站点存储';
+    return n || '存储不可用';
+  }
+
+  function storageAvailable() {
+    try {
+      localStorage.setItem('ssq.probe', '1');
+      localStorage.removeItem('ssq.probe');
+      return true;
+    } catch (e) {
+      storageError = storageReason(e);
+      return false;
+    }
+  }
+
   function loadHistory() {
     try {
       var raw = localStorage.getItem(LS_HISTORY);
-      var arr = raw ? JSON.parse(raw) : [];
-      return Array.isArray(arr) ? arr : [];
-    } catch (e) { return []; }
+      if (raw != null) {
+        var arr = JSON.parse(raw);
+        if (Array.isArray(arr)) { memHistory = arr; return arr; }
+      }
+      return memHistory;
+    } catch (e) {
+      return memHistory;
+    }
   }
+
+  // 返回 true = 已真正写入 localStorage；false = 只留在当前页内存
   function saveHistory(list) {
-    try { localStorage.setItem(LS_HISTORY, JSON.stringify(list.slice(0, 100))); } catch (e) { /* 忽略存储异常 */ }
+    var trimmed = list.slice(0, 100);
+    memHistory = trimmed;
+    try {
+      localStorage.setItem(LS_HISTORY, JSON.stringify(trimmed));
+      storageError = null;
+      return true;
+    } catch (e) {
+      storageError = storageReason(e);
+      return false;
+    }
   }
   function loadSettings() {
     try {
@@ -726,17 +775,66 @@
   }
 
   // ===== 生成 =====
+  var freshT = null; // 需要高亮的新记录时间戳（渲染时一次性播放动画）
+
   // mode: 'quick'（极速机选）| 'pick'（自选号）| 'physics'（物理摇奖，带可复播种子）
   function pushHistory(list, mode, seed) {
     var h = loadHistory();
-    h.unshift({
-      t: Date.now(),
+    var prevT = h[0] && typeof h[0].t === 'number' ? h[0].t : 0;
+    var entry = {
+      // 时间戳兼作记录主键（复播校验按它匹配），必须严格递增，避免同毫秒内撞号
+      t: Math.max(Date.now(), prevT + 1),
       tickets: list,
       mode: mode || 'quick',
       seed: (mode === 'physics' && typeof seed === 'number') ? (seed >>> 0) : null
-    });
-    saveHistory(h);
+    };
+    h.unshift(entry);
+    var saved = saveHistory(h);
+    freshT = entry.t;
     renderHistory();
+    if (!saved && !storageWarned) {
+      storageWarned = true;
+      toast('浏览器存储不可用（' + storageError + '），记录只保留在当前页面');
+    }
+    return { entry: entry, saved: saved };
+  }
+
+  // 摇奖结束后的去向提示：明确告诉用户「记到哪了」，并可直接跳转查看
+  function showSaveNote(entry, saved) {
+    if (!saveNoteEl || !entry) return;
+    saveNoteEl.hidden = false;
+    saveNoteEl.classList.toggle('warn', !saved);
+    saveNoteEl.innerHTML = '';
+    var txt = document.createElement('span');
+    txt.textContent = saved
+      ? '本次开奖已记入历史记录 · 种子 ' + entry.seed
+      : '本次结果未能写入浏览器（' + storageError + '），仅在本页可见';
+    saveNoteEl.appendChild(txt);
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'link-btn';
+    go.textContent = '查看历史 ↓';
+    go.addEventListener('click', function () { focusHistory(entry.t); });
+    saveNoteEl.appendChild(go);
+  }
+
+  function focusHistory(t) {
+    var row = document.getElementById('h-' + t);
+    var target = row || historyListEl;
+    try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    catch (e) { try { target.scrollIntoView(); } catch (e2) { /* ignore */ } }
+    if (row) {
+      row.classList.remove('fresh');
+      void row.offsetWidth;
+      row.classList.add('fresh');
+    }
+  }
+
+  // 兼容旧格式/损坏记录：没有 tickets 但有 reds/blue 时包一层
+  function entryTickets(entry) {
+    if (entry && Array.isArray(entry.tickets)) return entry.tickets;
+    if (entry && Array.isArray(entry.reds) && entry.blue != null) return [{ reds: entry.reds, blue: entry.blue }];
+    return [];
   }
 
   function generate() {
@@ -854,54 +952,72 @@
     list.forEach(function (entry) {
       var li = document.createElement('li');
       li.className = 'h-row';
+      if (entry && entry.t != null) li.id = 'h-' + entry.t;
 
-      var time = document.createElement('span');
-      time.className = 'h-time';
-      var d = new Date(entry.t);
-      time.textContent = pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' +
-        pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-      li.appendChild(time);
+      // 单条记录渲染失败不能拖垮整张列表（旧格式/损坏 JSON 一律降级显示）
+      try {
+        var tks = entryTickets(entry);
 
-      var mini = document.createElement('span');
-      mini.className = 'mini';
-      entry.tickets.forEach(function (t, ti) {
-        if (ti > 0) mini.appendChild(document.createTextNode(' / '));
-        t.reds.forEach(function (n) { mini.appendChild(miniBall('r', n)); });
-        mini.appendChild(document.createTextNode('+'));
-        mini.appendChild(miniBall('b', t.blue));
-      });
-      li.appendChild(mini);
+        var time = document.createElement('span');
+        time.className = 'h-time';
+        var ts = entry && typeof entry.t === 'number' ? entry.t : null;
+        if (ts === null) {
+          time.textContent = '--';
+        } else {
+          var d = new Date(ts);
+          time.textContent = pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' +
+            pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        }
+        li.appendChild(time);
 
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'link-btn';
-      btn.textContent = '复制';
-      btn.addEventListener('click', function () {
-        copyText(entry.tickets.map(formatTicket).join('\n'), '已复制该组');
-      });
+        var mini = document.createElement('span');
+        mini.className = 'mini';
+        tks.forEach(function (t, ti) {
+          if (ti > 0) mini.appendChild(document.createTextNode(' / '));
+          (t && Array.isArray(t.reds) ? t.reds : []).forEach(function (n) { mini.appendChild(miniBall('r', n)); });
+          mini.appendChild(document.createTextNode('+'));
+          mini.appendChild(miniBall('b', t && t.blue != null ? t.blue : 0));
+        });
+        if (!tks.length) mini.appendChild(document.createTextNode('（无号码数据）'));
+        li.appendChild(mini);
 
-      // 物理开奖记录：展示种子并支持复播（旧记录无种子则跳过）
-      if (entry.mode === 'physics' && typeof entry.seed === 'number') {
-        var seedEl = document.createElement('span');
-        seedEl.className = 'h-seed';
-        seedEl.textContent = '种子 ' + entry.seed +
-          (entry.verified === true ? ' ✓' : entry.verified === false ? ' ✗' : '');
-        seedEl.title = entry.verified === true ? '复播校验：与原始结果一致'
-          : entry.verified === false ? '复播校验：与原始结果不一致' : '尚未复播校验';
-        li.appendChild(seedEl);
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'link-btn';
+        btn.textContent = '复制';
+        btn.addEventListener('click', function () {
+          if (!tks.length) { toast('该记录无可复制的号码'); return; }
+          copyText(tks.map(formatTicket).join('\n'), '已复制该组');
+        });
 
-        var replayBtn = document.createElement('button');
-        replayBtn.type = 'button';
-        replayBtn.className = 'link-btn';
-        replayBtn.textContent = '复播';
-        replayBtn.addEventListener('click', function () { replayStart(entry); });
-        li.appendChild(replayBtn);
+        // 物理开奖记录：展示种子并支持复播（旧记录无种子则跳过）
+        if (entry.mode === 'physics' && typeof entry.seed === 'number') {
+          var seedEl = document.createElement('span');
+          seedEl.className = 'h-seed';
+          seedEl.textContent = '种子 ' + entry.seed +
+            (entry.verified === true ? ' ✓' : entry.verified === false ? ' ✗' : '');
+          seedEl.title = entry.verified === true ? '复播校验：与原始结果一致'
+            : entry.verified === false ? '复播校验：与原始结果不一致' : '尚未复播校验';
+          li.appendChild(seedEl);
+
+          var replayBtn = document.createElement('button');
+          replayBtn.type = 'button';
+          replayBtn.className = 'link-btn';
+          replayBtn.textContent = '复播';
+          replayBtn.addEventListener('click', function () { replayStart(entry); });
+          li.appendChild(replayBtn);
+        }
+
+        li.appendChild(btn);
+      } catch (e) {
+        li.className = 'h-row bad';
+        li.textContent = '记录损坏已跳过：' + ((e && e.message) || e);
       }
 
-      li.appendChild(btn);
-
+      if (entry && entry.t === freshT) li.classList.add('fresh');
       historyListEl.appendChild(li);
     });
+    freshT = null;
 
     renderLedger(list);
 
@@ -920,7 +1036,7 @@
   function computeHot(list) {
     var rc = {}, bc = {};
     list.forEach(function (e) {
-      (e.tickets || []).forEach(function (t) {
+      entryTickets(e).forEach(function (t) {
         (t.reds || []).forEach(function (n) { rc[n] = (rc[n] || 0) + 1; });
         if (t.blue != null) bc[t.blue] = (bc[t.blue] || 0) + 1;
       });
@@ -1800,6 +1916,7 @@
     machineUI.sim.pace = state.pace === 'real' ? 'real' : 'fast';
     simReset(machineUI.sim);
     clearResultRow();
+    if (saveNoteEl) { saveNoteEl.hidden = true; saveNoteEl.classList.remove('warn'); saveNoteEl.textContent = ''; }
     updateMachineUI();
     simStart(machineUI.sim);
   }
@@ -1820,8 +1937,23 @@
         toast(ok ? '复播完成，与原始记录一致 ✓' : '复播结果与原始记录不一致（代码版本可能已变化）');
       } else {
         state.current = [ticket];
-        pushHistory([ticket], 'physics', machineUI.currentSeed);
+        var res = pushHistory([ticket], 'physics', machineUI.currentSeed);
+        showSaveNote(res.entry, res.saved);
         refreshCheck();
+        if (res.saved) {
+          toast('已记入历史记录 · 种子 ' + res.entry.seed);
+        } else {
+          toast('结果只留在本页：' + storageError);
+        }
+      }
+    } else if (!replay) {
+      // 以前这里是静默跳过——球数不对时用户会以为「历史被改没了」，现在必须说清楚
+      toast('本次开奖未凑齐 7 颗球（红 ' + reds.length + '/6、蓝 ' + (blue != null ? 1 : 0) +
+        '/1），未记入台账，请再摇一次');
+      if (saveNoteEl) {
+        saveNoteEl.hidden = false;
+        saveNoteEl.classList.add('warn');
+        saveNoteEl.textContent = '本次开奖异常（红 ' + reds.length + '/6、蓝 ' + (blue != null ? 1 : 0) + '/1），未生成有效号码';
       }
     }
     machineUI.remaining--;
@@ -2176,12 +2308,13 @@
     copyHistoryBtn.addEventListener('click', function () {
       var h = loadHistory();
       if (!h.length) { toast('暂无历史记录'); return; }
-      copyText(h.map(function (e) { return e.tickets.map(formatTicket).join('\n'); }).join('\n'), '已复制全部历史');
+      copyText(h.map(function (e) { return entryTickets(e).map(formatTicket).join('\n'); }).join('\n'), '已复制全部历史');
     });
 
     clearHistoryBtn.addEventListener('click', function () {
       if (!loadHistory().length) { toast('暂无历史记录'); return; }
       if (window.confirm('确定清空全部历史记录？')) {
+        memHistory = [];
         try { localStorage.removeItem(LS_HISTORY); } catch (e) { /* ignore */ }
         renderHistory();
         toast('已清空');
@@ -2230,6 +2363,7 @@
 
   // ===== 初始化 =====
   function init() {
+    var lsOK = storageAvailable();
     loadSettings();
     syncSettingsUI();
     buildPickers();
@@ -2239,6 +2373,15 @@
     initCheckPanel();
     bindEvents();
     initMachine();
+    if (!lsOK) {
+      // 存储被禁用时提前告知，避免摇完发现「什么都没留下」
+      if (saveNoteEl) {
+        saveNoteEl.hidden = false;
+        saveNoteEl.classList.add('warn');
+        saveNoteEl.textContent = '浏览器存储不可用（' + storageError + '）：记录只保留在当前页面，关闭后会丢失';
+      }
+      setTimeout(function () { toast('浏览器存储不可用，历史记录无法长期保存'); }, 600);
+    }
   }
 
   init();
