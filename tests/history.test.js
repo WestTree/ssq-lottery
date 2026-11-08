@@ -7,6 +7,7 @@
  *   2. 存储被禁（模拟 QuotaExceededError）：页面不得抛错、不得留白，
  *      记录降级到内存、必须有红色警告提示（旧版此处是静默失败）
  *   3. 连摇两次：必须追加成 2 条，且时间戳主键唯一（fresh 只高亮最新一条）
+ *   4. 开奖数据缺失：中奖核对必须给出可见提示，不能静默隐藏；摇奖与历史仍可用
  *
  * 运行：node tests/history.test.js
  * 依赖：本机 Google Chrome（找不到时以 SKIP 退出，不算失败）
@@ -87,6 +88,10 @@ window.addEventListener('load', function () {
       p('note=' + (sn.hidden ? 'hidden'
         : (sn.classList.contains('warn') ? 'WARN' : 'OK')));
       p('storageError=' + (T.storageError || 'none'));
+      var cd = document.getElementById('checkDisabled');
+      p('checkDisabled=' + (cd ? (cd.hidden ? 'hidden' : 'VISIBLE') : 'missing'));
+      var eb = document.getElementById('errBar');
+      p('errBar=' + (eb ? (eb.hidden ? 'hidden' : 'VISIBLE') : 'missing'));
       p('errs=' + (window.__ERRS.length ? window.__ERRS.join(';') : 'none'));
     } catch (e) { p('ERR:' + e.message); }
     document.title = 'P|' + L.join('|');
@@ -116,6 +121,10 @@ window.addEventListener('load', function () {
 </script>
 `;
     out = out.replace('<script src="data/ssq.js">', block + '<script src="data/ssq.js">');
+  }
+  if (mode === 'nodata') {
+    // 模拟 data/ssq.js 缺失：中奖核对必须给出可见提示，而不是静默隐藏整张卡
+    out = out.replace(/<script src="data\/ssq\.js"><\/script>/, '');
   }
   return out.replace('</body>', probe + '</body>');
 }
@@ -193,6 +202,14 @@ function main() {
   assert(c.rows === '2', '列表渲染 2 行', c.rows);
   assert(c.fresh === '1', '只高亮最新一条（时间戳未撞号）', c.fresh);
   assert(c.cnt === '（2 组）', '历史计数为 2 组', c.cnt);
+
+  console.log('【4】开奖数据缺失：功能降级必须可见，且不影响摇奖');
+  const d = runCase(chrome, html, 'nodata', 'nodata');
+  assert(d.phase === 'done', '数据缺失时物理摇奖仍能完成', d.phase);
+  assert(d.histN === '1', '数据缺失时历史记录仍可写入', d.histN);
+  assert(d.checkDisabled === 'VISIBLE', '中奖核对显示可见的缺失提示', d.checkDisabled);
+  assert(d.errBar === 'hidden', '未出现未捕获异常（不弹全局错误条）', d.errBar);
+  assert(d.errs === 'none', '无 JS 异常', d.errs);
 
   console.log('\n' + (fail === 0 ? 'HISTORY TESTS ALL PASSED' : 'HISTORY TESTS FAILED: ' + fail));
   process.exit(fail === 0 ? 0 : 1);

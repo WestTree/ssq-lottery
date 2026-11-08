@@ -8,13 +8,18 @@
  *   dist/data/ssq.js    （瘦身版：只带最近 KEEP 期，数组精简格式）
  *   dist/_headers       （Cloudflare Pages 响应头配置）
  *
- * 为什么瘦身：完整数据 3515 期约 383KB，而页面只用到最近 60 期；
+ * 为什么瘦身：完整数据约 380KB，而页面只用到最近 60 期；
  * 线上首屏没必要背全量。源数据 data/ssq.js 保持完整不动，
  * 完整数据集仍可由页面用 window.SSQ_TOTAL 展示真实期数。
+ *
+ * 构建时还会把版本戳注入 dist/index.html 的 <!--SSQ_BUILD--> 占位：
+ * 构建日期、git 短 hash、数据最新期号/日期、总期数、内置期数。
+ * 线上自查不再需要靠「数页面字节数」判断新旧。
  *
  * 说明: 幂等，可反复运行；build 失败直接抛错并以非 0 退出，避免把坏产物传上线。
  */
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -46,7 +51,8 @@ if (!/\/\*__PHYS_START__\*\/[\s\S]*?\/\*__PHYS_END__\*\//.test(html)) fail('inde
 for (const id of ['drawCount', 'drawKept', 'issueSelect']) {
   if (!html.includes('id="' + id + '"')) fail('index.html 缺少节点 #' + id);
 }
-writeFileSync(join(DIST, 'index.html'), html);
+if (!html.includes('<!--SSQ_BUILD-->')) fail('index.html 缺少 <!--SSQ_BUILD--> 版本戳占位');
+// HTML 在拿到数据元信息后再写（步骤 3 之后），以便注入版本戳
 
 // 3) 开奖数据：完整校验 → 取最近 KEEP 期 → 转数组精简格式
 const dataPath = join(ROOT, 'data', 'ssq.js');
@@ -130,6 +136,35 @@ if (reParsed[0][2].split(',').length !== 6) fail('精简数据自检失败（首
 
 writeFileSync(join(DIST, 'data', 'ssq.js'), slim);
 
+// 3b) 版本戳：便于线上自查「页面是哪次构建、带哪一期数据」
+function beijingDate() {
+  try {
+    return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
+  } catch (e) {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+let commit = 'unknown';
+try {
+  commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'],
+    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+} catch (e) { /* 非 git 工作区也能构建 */ }
+
+const build = {
+  built: beijingDate(),
+  commit: commit || 'unknown',
+  issue: lastIssue,
+  date: String((all[0] || {}).date || ''),
+  total: all.length,
+  kept: kept.length,
+};
+if (!/^\d{5}$/.test(build.issue)) fail('版本戳期号非法：' + build.issue);
+if (!/^\d{4}-\d{2}-\d{2}$/.test(build.date)) fail('版本戳日期非法：' + build.date);
+const inject = '<script>window.SSQ_BUILD = ' + JSON.stringify(build) + ';</script>';
+const outHtml = html.replace('<!--SSQ_BUILD-->', inject);
+if (outHtml === html) fail('版本戳注入失败（占位未被替换）');
+writeFileSync(join(DIST, 'index.html'), outHtml);
+
 // 4) 响应头：HTML 不缓存（发版即生效），数据短缓存；基础安全头
 const headers = [
   '/*',
@@ -151,7 +186,9 @@ writeFileSync(join(DIST, '_headers'), headers);
 
 // 5) 报告
 console.log('构建完成 dist/');
-console.log('  index.html      ' + kb(Buffer.byteLength(html)) + '  Cache-Control: must-revalidate');
+console.log('  版本            ' + build.built + ' · ' + build.commit +
+  ' · 数据至第 ' + build.issue + ' 期（' + build.date + '）');
+console.log('  index.html      ' + kb(Buffer.byteLength(outHtml)) + '  Cache-Control: must-revalidate');
 console.log('  data/ssq.js     ' + kb(Buffer.byteLength(slim)) + '  ' + kept.length + ' 期（源共 ' + all.length + ' 期）  max-age=300');
 console.log('  _headers        安全头 + 缓存策略');
 console.log('源数据体积        ' + kb(Buffer.byteLength(src)) + ' → 部署副本 ' + kb(Buffer.byteLength(slim))

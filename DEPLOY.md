@@ -4,22 +4,26 @@
 
 ```
 dist/
-├── index.html      页面本体（CSS/JS 全内联，约 85KB / gzip 约 25KB）
+├── index.html      页面本体（CSS/JS 全内联，约 104KB / gzip 约 26KB，含注入的版本戳）
 ├── data/ssq.js     最近 300 期开奖数据（精简数组格式，15KB / gzip 约 4KB）
 └── _headers        缓存策略 + 基础安全头
 ```
 
 **当前线上地址**：<https://ssq-machine.pages.dev>（项目名 `ssq-machine`，`main` 为生产分支）
 
-> 数据瘦身说明：源数据 `data/ssq.js` 保留完整 3515 期（374KB），但页面下拉核对只用到最近 60 期。
+> 数据瘦身说明：源数据 `data/ssq.js` 保留完整 3524 期（约 375KB），但页面下拉核对只用到最近 60 期。
 > 构建时只把最近 300 期以 `[期号,日期,"红球串","蓝球"]` 格式写入部署副本，体积降 96%；
-> 完整期数由 `window.SSQ_TOTAL` 传入，页面仍显示「完整数据集共 3515 期」，不会虚报。
+> 完整期数由 `window.SSQ_TOTAL` 传入，页面仍显示真实总期数，不会虚报。
 
 ## 0. 生成发布目录
 
 ```bash
 node tools/build_dist.mjs
 ```
+
+构建时会注入 `window.SSQ_BUILD` 版本戳（构建日期、git 源码基线、数据最新期号/日期、总期数、内置期数），
+页面页脚直接显示。**线上自查不用再数页面字节数**：看页脚「构建 YYYY-MM-DD · hash · 数据至第 XXXXX 期」即可。
+`tests/build.test.js` 会校验版本戳与主数据一致、且 `dist/index.html` 除版本戳外与源文件逐字节相同。
 
 构建时会自动校验（任一不满足直接失败，避免把坏产物传上线）：
 
@@ -28,6 +32,24 @@ node tools/build_dist.mjs
 - 源数据可解析为 JSON 数组、期数 ≥ 3000
 - **逐条校验**全部历史记录：期号 5 位、日期真实存在、红球 6 个不重复且在 1–33、蓝球 1 个且在 1–16
 - 产出后自检：精简数据能解析回数组、条数 = 300、首条期号与源最新一期一致
+- `index.html` 含 `<!--SSQ_BUILD-->` 占位，且版本戳字段（期号/日期/总期数）与主数据一致
+
+## 0b. 一键发布（推荐）
+
+```bash
+# 完整：更新数据 → 构建 → 全量测试 → 提交 → 重建发布版 → 部署 → 推送
+CLOUDFLARE_API_TOKEN=xxx CLOUDFLARE_ACCOUNT_ID=yyy sh tools/release.sh
+
+# 只构建 + 测试，不部署不提交
+sh tools/release.sh --dry-run
+
+# 数据已是最新，跳过联网拉取
+sh tools/release.sh --no-update
+```
+
+顺序刻意设计：**先构建、后测试**（`core.test.js` / `build.test.js` 都校验 `dist/` 产物，若先测试后构建，等于拿旧产物验新代码）；
+**提交后再重建一次 dist**，让版本戳里的 git hash 指向本次发布提交而不是上一个 HEAD。
+提交信息按实际变更类型生成（纯数据 / 代码+数据 / 纯代码），不再一律写成 `data: 更新开奖数据`。
 
 ## 方案 A：控制台直接上传（最快，适合先上线验证）
 
@@ -108,7 +130,8 @@ Pages 项目 → **Custom domains** → 添加域名（域名已托管在 Cloudf
 
 ## 线上实测（2026-10-17，经沙箱代理）
 
-> 2026-10-25 已用 wrangler 重发新版：`index.html` 101.4KB（含卡位托盘、真实节奏档、历史记录落盘提示）。判断线上新旧：`curl -s https://ssq-machine.pages.dev/ | wc -c`，旧版约 87.6KB。
+> 2026-10-25 已用 wrangler 重发新版：`index.html` 101.4KB（含卡位托盘、真实节奏档、历史记录落盘提示）。
+> 2026-11-08 起改为**看页脚版本戳**判断线上新旧（构建日期 · git hash · 数据至第 XXXXX 期），不再靠数字节数。
 
 | 资源 | 原始 | gzip 传输 | 耗时 |
 |---|---|---|---|
@@ -124,10 +147,11 @@ Pages 项目 → **Custom domains** → 添加域名（域名已托管在 Cloudf
 |---|---|
 | `wrangler` 报 `Invalid access token [code: 9109]` | 令牌过期或已被删。用 `curl -H "Authorization: Bearer <token>" https://api.cloudflare.com/client/v4/user/tokens/verify` 查过期时间，重新生成（权限 Pages:Edit）后重试 |
 | `wrangler` 报 `In a non-interactive environment...` | 无 TTY 时必须给 `CLOUDFLARE_API_TOKEN`；本机 OAuth 缓存无法在无终端环境刷新 |
-| 摇完奖「历史记录」里没有本次结果 | 旧版 `saveHistory` 会把存储异常吃掉（隐私模式、禁用站点数据、配额满）。已修复：记录降级到当前页内存，并在摇奖舞台下方显示「已记入历史 · 种子 xxx」或红色失败原因。若仍看不到，先确认线上是不是旧版本（`curl -s https://<域名>/ | wc -c`，新版约 101KB） |
-| 页面能开，但「中奖核对」卡片消失 | `data/ssq.js` 未加载。访问 `https://<域名>/data/ssq.js` 确认可打开且类型为 JS |
+| 摇完奖「历史记录」里没有本次结果 | 旧版 `saveHistory` 会把存储异常吃掉（隐私模式、禁用站点数据、配额满）。已修复：记录降级到当前页内存，并在摇奖舞台下方显示「已记入历史 · 种子 xxx」或红色失败原因。若仍看不到，先看页脚构建版本是不是旧版 |
+| 中奖核对区域提示「开奖数据未加载」 | `data/ssq.js` 未加载或格式损坏。访问 `https://<域名>/data/ssq.js` 确认可打开且类型为 JS；摇奖与历史记录不受影响 |
+| 线上期号落后于本地 | 主数据更新后必须**重建 `dist/` 并重新部署**，两步缺一不可。用 `sh tools/release.sh` 走闭环，别只跑 `update_ssq_data.mjs` |
 | 复播提示「与原始记录不一致」 | 物理参数或模拟代码改动过，同种子结果变化。属诚实审计行为，旧记录仍可查看 |
-| 发版后仍是旧页面 | 强刷一次（HTML 为 `must-revalidate`）；`data/ssq.js` 缓存 5 分钟 |
+| 发版后仍是旧页面 | 强刷一次（HTML 为 `must-revalidate`）；`data/ssq.js` 缓存 5 分钟。看页脚「构建日期 · hash · 数据至第 XXXXX 期」确认是否生效 |
 | 构建失败 | 看 Pages 构建日志；本地先跑 `node tools/build_dist.mjs` 复现 |
 
 ## 免费额度（官方文档 2026-10）

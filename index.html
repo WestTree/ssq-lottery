@@ -133,6 +133,14 @@
     margin:10px 0 2px;padding:8px 12px;border-radius:10px;font-size:13px;
     background:rgba(46,160,93,.09);color:#1f7a46;border:1px solid rgba(46,160,93,.22)}
   .save-note.warn{background:rgba(229,72,77,.09);color:#b3353a;border-color:rgba(229,72,77,.26)}
+  .build{margin-top:8px;font-size:11px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+  .data-warn{padding:10px 12px;border-radius:10px;font-size:13px;
+    background:rgba(229,72,77,.09);color:#b3353a;border:1px solid rgba(229,72,77,.26)}
+  .err-bar{position:fixed;left:12px;right:12px;bottom:12px;z-index:99;display:flex;
+    align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:12px 16px;border-radius:12px;font-size:13px;
+    background:#fff5f5;color:#b3353a;border:1px solid rgba(229,72,77,.35);
+    box-shadow:var(--shadow)}
   .ledger{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
     display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
   .ledger b{color:var(--text);font-variant-numeric:tabular-nums}
@@ -302,6 +310,7 @@
     </div>
     <div class="draw-balls" id="drawBalls"></div>
     <div id="checkResult"></div>
+    <div class="data-warn" id="checkDisabled" hidden><span id="checkDisabledText"></span></div>
     <p class="hint">开奖数据来源：500.com（datachart.500.com），完整数据集共 <span id="drawCount">0</span> 期，最新更新至 <span id="drawUpdated">-</span>；本页内置最近 <span id="drawKept">0</span> 期供核对。号码由本地摇奖产生，与开奖机构无关，仅供娱乐。</p>
   </section>
 
@@ -329,17 +338,44 @@
   <footer>
     <p>本页面完全在本地浏览器中运行，不联网、不上传、不收集任何数据，记录仅保存于本机 localStorage；开奖历史数据来自 500.com，存放于本地 data/ssq.js。</p>
     <p>双色球开奖为独立随机事件，任何号码的中奖概率相同；本工具仅供娱乐参考，请理性购彩，未成年人不得购买彩票。</p>
+    <p class="build" id="buildInfo"></p>
   </footer>
 
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="err-bar" id="errBar" hidden role="alert">
+  <span id="errText"></span>
+  <button type="button" class="link-btn" onclick="location.reload()">刷新页面</button>
+</div>
 
-<!-- 历史开奖数据（tools/update_ssq_data.mjs 生成；文件缺失时中奖核对自动禁用，不影响其他功能） -->
+<!-- 历史开奖数据（tools/update_ssq_data.mjs 生成；文件缺失时中奖核对会给出可见提示，不影响其他功能） -->
 <script src="data/ssq.js"></script>
+<!--SSQ_BUILD-->
 
 <script>
 (function () {
   'use strict';
+
+  // ===== 全局异常兜底 =====
+  // 这个页面曾因 localStorage 被静默吞异常导致「摇完没有记录」。
+  // 统一原则：任何未捕获异常都要让用户看见，绝不静默失败。
+  function showFatal(prefix, detail) {
+    try {
+      var bar = document.getElementById('errBar');
+      var txt = document.getElementById('errText');
+      if (!bar || !txt) return;
+      txt.textContent = prefix + '：' + (detail || '未知错误') +
+        '。本机历史记录不会因此丢失，可刷新页面重试。';
+      bar.hidden = false;
+    } catch (e) { /* 兜底本身不能再抛错 */ }
+  }
+  window.addEventListener('error', function (e) {
+    showFatal('页面运行异常', e && (e.message || (e.error && e.error.message)));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    showFatal('异步任务异常', r && (r.message || String(r)));
+  });
 
   /*__CORE_START__*/
   // ===== 核心随机逻辑（纯函数，可被自动化测试提取） =====
@@ -1133,15 +1169,30 @@
   var checkDraws = [];   // 规范化开奖数据（最新在前，最多 60 期）
   var checkIssue = null; // 当前核对期号
 
+  function disableCheckPanel(reason) {
+    // 旧版直接 display:none 隐藏整张卡，用户只会觉得「功能莫名消失」。
+    // 现在保留卡片并给出原因，同时隐藏不可用的控件。
+    var tip = $('checkDisabled');
+    if (tip) {
+      $('checkDisabledText').textContent = reason;
+      tip.hidden = false;
+    }
+    var parts = checkCardEl.querySelectorAll('.ctrl-row, .draw-balls, #checkResult, .hint');
+    for (var i = 0; i < parts.length; i++) parts[i].style.display = 'none';
+  }
+
   function initCheckPanel() {
     var raw = null;
     try { raw = window.SSQ_HISTORY; } catch (e) { raw = null; }
     if (!Array.isArray(raw) || !raw.length) {
-      checkCardEl.style.display = 'none'; // 数据文件缺失：禁用核对功能，不影响其他模块
+      disableCheckPanel('开奖数据未加载（data/ssq.js 缺失或损坏），中奖核对暂不可用；摇奖与历史记录不受影响。');
       return;
     }
     checkDraws = loadDraws(raw, 60);
-    if (!checkDraws.length) { checkCardEl.style.display = 'none'; return; }
+    if (!checkDraws.length) {
+      disableCheckPanel('开奖数据格式异常，无法解析出有效期号；中奖核对暂不可用。');
+      return;
+    }
     drawCountEl.textContent = String(window.SSQ_TOTAL || raw.length);
     if (drawKeptEl) drawKeptEl.textContent = String(window.SSQ_KEPT || raw.length);
     drawUpdatedEl.textContent = checkDraws[0].date;
@@ -1815,6 +1866,7 @@
     speed: 1, busy: false, remaining: 0, totalDraws: 1, drawSeq: 0,
     particles: [], spheres: null, numbers: {}, mode: 'physics', lastPhaseText: '',
     currentSeed: null, replay: null,
+    lastUI: {}, lastActiveSlot: -2, paused: false,
   };
 
   // 球体精灵：渐变球面 + 固定光源高光（不随滚动旋转）
@@ -1973,6 +2025,12 @@
 
   function updateMachineUI() {
     var sim = machineUI.sim;
+    // 切后台时 rAF 被浏览器暂停，这里给出明确状态，避免「回来发现摇奖没结束」
+    if (machineUI.paused) {
+      phaseTextEl.textContent = '已暂停 · 返回本页后继续';
+      machineUI.lastPhaseText = '';
+      return;
+    }
     var txt;
     if (!sim || sim.phase === 'idle') {
       txt = machineUI.busy ? '待机中' : '待机中 · 点击「开始摇奖」';
@@ -2001,15 +2059,43 @@
       phaseTextEl.textContent = txt;
       machineUI.lastPhaseText = txt;
     }
-    ballCounterEl.textContent = sim ? (sim.drawCount + ' / 7') : '0 / 7';
-    seedTextEl.textContent = machineUI.busy && machineUI.currentSeed != null
+    // 每帧写 DOM 属于无效重排源；按值变化才落盘（渲染循环 60fps 下能省掉绝大多数写入）
+    var U = machineUI.lastUI;
+    var counter = sim ? (sim.drawCount + ' / 7') : '0 / 7';
+    if (U.counter !== counter) { ballCounterEl.textContent = counter; U.counter = counter; }
+    var seed = machineUI.busy && machineUI.currentSeed != null
       ? '种子 ' + machineUI.currentSeed : '';
-    progressBarEl.style.width = sim ? (sim.drawCount / 7 * 100) + '%' : '0%';
+    if (U.seed !== seed) { seedTextEl.textContent = seed; U.seed = seed; }
+    var width = sim ? (sim.drawCount / 7 * 100) + '%' : '0%';
+    if (U.width !== width) { progressBarEl.style.width = width; U.width = width; }
+
     var cur = sim && sim.phase !== 'idle' && sim.phase !== 'done' ? sim.drawCount : -1;
-    for (var i = 0; i < 7; i++) {
-      var slot = resultRowEl.children[i];
-      if (slot) slot.classList.toggle('active', i === cur);
+    if (cur !== machineUI.lastActiveSlot) {
+      for (var i = 0; i < 7; i++) {
+        var slot = resultRowEl.children[i];
+        if (slot) slot.classList.toggle('active', i === cur);
+      }
+      machineUI.lastActiveSlot = cur;
     }
+  }
+
+  // 页面可见性：后台停掉 rAF（省电），回前台重置时间基准避免「快进」
+  function bindVisibility() {
+    if (typeof document.hidden === 'undefined') return;
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        machineUI.paused = true;
+        if (machineUI.rafId) { cancelAnimationFrame(machineUI.rafId); machineUI.rafId = 0; }
+        machineUI.lastT = 0;
+        updateMachineUI();
+      } else {
+        machineUI.paused = false;
+        machineUI.lastT = 0;
+        machineUI.acc = 0;
+        if (!machineUI.rafId) machineUI.rafId = requestAnimationFrame(machineLoop);
+        updateMachineUI();
+      }
+    });
   }
 
   function setMode(mode) {
@@ -2364,6 +2450,21 @@
     if (machineUI.mode === 'physics') physicsStart(); else generate();
   }
 
+  // ===== 构建信息（由 tools/build_dist.mjs 注入，本地直开时为「开发版」）=====
+  function renderBuildInfo() {
+    var el = $('buildInfo');
+    if (!el) return;
+    var b = null;
+    try { b = window.SSQ_BUILD || null; } catch (e) { b = null; }
+    if (!b || !b.built || !b.issue) {
+      el.textContent = '本地开发版 · 未注入构建信息（发布前请运行 node tools/build_dist.mjs）';
+      return;
+    }
+    el.textContent = '构建 ' + b.built + ' · ' + (b.commit || 'unknown') +
+      ' · 开奖数据至第 ' + b.issue + ' 期（' + (b.date || '-') + '）· 共 ' +
+      (b.total || 0) + ' 期 / 内置 ' + (b.kept || 0) + ' 期';
+  }
+
   // ===== 初始化 =====
   function init() {
     var lsOK = storageAvailable();
@@ -2376,6 +2477,8 @@
     initCheckPanel();
     bindEvents();
     initMachine();
+    bindVisibility();
+    renderBuildInfo();
     if (!lsOK) {
       // 存储被禁用时提前告知，避免摇完发现「什么都没留下」
       if (saveNoteEl) {
